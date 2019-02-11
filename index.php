@@ -121,8 +121,7 @@ if (!file_exists(GLPI_CONFIG_DIR . "/config_db.php")) {
        }
        </style> ";
 
-    echo "<div class=\"Intro\" align=\"center\">При входе необходимо вводить свой логин и пароль от Windows. И выбрать из списка AD TATPROF. TESt</div>";   
-    echo "TEST23";
+    echo "<div class=\"Intro\" align=\"center\">При входе необходимо вводить свой логин и пароль от Windows. И выбрать из списка AD TATPROF.</div>";   
     
    // Other CAS
    if (isset($_GET["noAUTO"])) {
