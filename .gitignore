@@ -1,6 +1,6 @@
 .atom/
-/files/
-/lib/
-/plugins/
-/vendor/
+files/
+lib/
+plugins/
+vendor/
 piwik/
