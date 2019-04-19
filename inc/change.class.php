@@ -132,20 +132,6 @@ class Change extends CommonITILObject {
 
 
    /**
-    * Is the current user have right to approve solution of the current change ?
-    *
-    * @return boolean
-   **/
-   function canApprove() {
-
-      return (($this->fields["users_id_recipient"] === Session::getLoginUserID())
-              || $this->isUser(CommonITILActor::REQUESTER, Session::getLoginUserID())
-              || (isset($_SESSION["glpigroups"])
-                  && $this->haveAGroup(CommonITILActor::REQUESTER, $_SESSION["glpigroups"])));
-   }
-
-
-   /**
     * Is the current user have right to create the current change ?
     *
     * @return boolean
@@ -156,6 +142,21 @@ class Change extends CommonITILObject {
          return false;
       }
       return Session::haveRight(self::$rightname, CREATE);
+   }
+
+
+   /**
+    * is the current user could reopen the current change
+    *
+    * @since 9.4.0
+    *
+    * @return boolean
+    */
+   function canReopen() {
+      return Session::haveRight('followup', CREATE)
+             && in_array($this->fields["status"], $this->getClosedStatusArray())
+             && ($this->isAllowedStatus($this->fields['status'], self::INCOMING)
+                 || $this->isAllowedStatus($this->fields['status'], self::EVALUATION));
    }
 
 
@@ -187,11 +188,19 @@ class Change extends CommonITILObject {
       if (static::canView()) {
          switch ($item->getType()) {
             case __CLASS__ :
-               $ong = [1 => __('Analysis'),
-                       3 => __('Plans')];
+               $timeline    = $item->getTimelineItems();
+               $nb_elements = count($timeline);
+
+               $ong = [
+                  5 => __("Processing change")." <sup class='tab_nb'>$nb_elements</sup>",
+                  1 => __('Analysis'),
+                  3 => __('Plans')
+               ];
+
                if ($item->canUpdate()) {
                   $ong[4] = __('Statistics');
                }
+
                return $ong;
          }
       }
@@ -208,19 +217,19 @@ class Change extends CommonITILObject {
                   $item->showAnalysisForm();
                   break;
 
-               case 2 :
-                  if (!isset($_GET['load_kb_sol'])) {
-                     $_GET['load_kb_sol'] = 0;
-                  }
-                  $item->showSolutions($_GET['load_kb_sol']);
-                  break;
-
                case 3 :
                   $item->showPlanForm();
                   break;
 
                case 4 :
                   $item->showStats();
+                  break;
+               case 5 :
+                  echo "<div class='timeline_box'>";
+                  $rand = mt_rand();
+                  $item->showTimelineForm($rand);
+                  $item->showTimeline($rand);
+                  echo "</div>";
                   break;
             }
             break;
@@ -234,14 +243,11 @@ class Change extends CommonITILObject {
       // show related tickets and changes
       $this->addDefaultFormTab($ong);
       $this->addStandardTab(__CLASS__, $ong, $options);
-      $this->addStandardTab('ITILSolution', $ong, $options);
       $this->addStandardTab('ChangeValidation', $ong, $options);
-      $this->addStandardTab('ChangeTask', $ong, $options);
       $this->addStandardTab('ChangeCost', $ong, $options);
-      $this->addStandardTab('Change_Project', $ong, $options);
+      $this->addStandardTab('Itil_Project', $ong, $options);
       $this->addStandardTab('Change_Problem', $ong, $options);
       $this->addStandardTab('Change_Ticket', $ong, $options);
-      $this->addStandardTab('Document_Item', $ong, $options);
       $this->addStandardTab('Change_Item', $ong, $options);
       $this->addStandardTab('KnowbaseItem_Item', $ong, $options);
       $this->addStandardTab('Notepad', $ong, $options);
@@ -262,7 +268,6 @@ class Change extends CommonITILObject {
             // Done by parent: Change_Group::class,
             Change_Item::class,
             Change_Problem::class,
-            Change_Project::class,
             // Done by parent: Change_Supplier::class,
             Change_Ticket::class,
             // Done by parent: Change_User::class,
@@ -374,6 +379,16 @@ class Change extends CommonITILObject {
          NotificationEvent::raiseEvent($type, $this);
       }
 
+      if (isset($this->input['_from_items_id'])
+          && isset($this->input['_from_itemtype'])) {
+         $change_item = new Change_Item();
+         $change_item->add([
+            'items_id'      => (int)$this->input['_from_items_id'],
+            'itemtype'      => $this->input['_from_itemtype'],
+            'changes_id'    => $this->fields['id'],
+            '_disablenotif' => true
+         ]);
+      }
    }
 
 
@@ -396,6 +411,52 @@ class Change extends CommonITILObject {
       $tab = [];
 
       $tab = array_merge($tab, $this->getSearchOptionsMain());
+
+      $tab[] = [
+         'id'                 => '68',
+         'table'              => 'glpi_changes_items',
+         'field'              => 'id',
+         'name'               => _x('quantity', 'Number of items'),
+         'forcegroupby'       => true,
+         'usehaving'          => true,
+         'datatype'           => 'count',
+         'massiveaction'      => false,
+         'joinparams'         => [
+            'jointype'           => 'child'
+         ]
+      ];
+
+      $tab[] = [
+         'id'                 => '13',
+         'table'              => 'glpi_changes_items',
+         'field'              => 'items_id',
+         'name'               => _n('Associated element', 'Associated elements', Session::getPluralNumber()),
+         'datatype'           => 'specific',
+         'comments'           => true,
+         'nosearch'           => true,
+         'additionalfields'   => ['itemtype'],
+         'joinparams'         => [
+            'jointype'           => 'child'
+         ],
+         'forcegroupby'       => true,
+         'massiveaction'      => false
+      ];
+
+      $tab[] = [
+         'id'                 => '131',
+         'table'              => 'glpi_changes_items',
+         'field'              => 'itemtype',
+         'name'               => _n('Associated item type', 'Associated item types', Session::getPluralNumber()),
+         'datatype'           => 'itemtypename',
+         'itemtype_list'      => 'ticket_types',
+         'nosort'             => true,
+         'additionalfields'   => ['itemtype'],
+         'joinparams'         => [
+            'jointype'           => 'child'
+         ],
+         'forcegroupby'       => true,
+         'massiveaction'      => false
+      ];
 
       $tab = array_merge($tab, $this->getSearchOptionsActors());
 
@@ -452,6 +513,8 @@ class Change extends CommonITILObject {
       $tab = array_merge($tab, Notepad::rawSearchOptionsToAdd());
 
       $tab = array_merge($tab, ChangeValidation::rawSearchOptionsToAdd());
+
+      $tab = array_merge($tab, ITILFollowup::rawSearchOptionsToAdd());
 
       $tab = array_merge($tab, ChangeTask::rawSearchOptionsToAdd());
 
@@ -606,6 +669,7 @@ class Change extends CommonITILObject {
                $options['priority']            = $ticket->getField('priority');
                $options['itilcategories_id']   = $ticket->getField('itilcategories_id');
                $options['time_to_resolve']     = $ticket->getField('time_to_resolve');
+               $options['entities_id']         = $ticket->getField('entities_id');
             }
          }
 
@@ -619,6 +683,7 @@ class Change extends CommonITILObject {
                $options['priority']            = $problem->getField('priority');
                $options['itilcategories_id']   = $problem->getField('itilcategories_id');
                $options['time_to_resolve']     = $problem->getField('time_to_resolve');
+               $options['entities_id']         = $problem->getField('entities_id');
             }
          }
       }
@@ -656,6 +721,14 @@ class Change extends CommonITILObject {
       if (isset($options['problems_id'])) {
          echo "<input type='hidden' name='_problems_id' value='".$options['problems_id']."'>";
       }
+
+      if (isset($options['_add_fromitem'])
+          && isset($options['_from_items_id'])
+          && isset($options['_from_itemtype'])) {
+         echo Html::hidden('_from_items_id', ['value' => $options['_from_items_id']]);
+         echo Html::hidden('_from_itemtype', ['value' => $options['_from_itemtype']]);
+      }
+
       $date = $this->fields["date"];
       if (!$ID) {
          $date = date("Y-m-d H:i:s");
@@ -733,9 +806,11 @@ class Change extends CommonITILObject {
       echo "<tr class='tab_bg_1'>";
       echo "<th>".__('Category')."</th>";
       echo "<td >";
-      $opt = ['value'  => $this->fields["itilcategories_id"],
-                   'entity' => $this->fields["entities_id"],
-                   'condition' => "`is_change`='1'"];
+      $opt = [
+         'value'  => $this->fields["itilcategories_id"],
+         'entity' => $this->fields["entities_id"],
+         'condition' => ['is_change' => 1]
+      ];
       ITILCategory::dropdown($opt);
       echo "</td>";
       echo "<th>".__('Impact')."</th>";
@@ -911,22 +986,6 @@ class Change extends CommonITILObject {
    }
 
 
-   /**
-    * Number of tasks of the change
-    *
-    * @return integer
-   **/
-   function numberOfTasks() {
-      global $DB;
-      // Set number of followups
-      $row = $DB->request([
-         'FROM'   => 'glpi_changetasks',
-         'COUNT'  => 'cpt',
-         'WHERE'  => ['changes_id' => $this->fields['id']]
-      ])->next();
-      return (int)$row['cpt'];
-   }
-
    static function getCommonSelect() {
 
       $SELECT = "";
@@ -1052,6 +1111,26 @@ class Change extends CommonITILObject {
                             AND `itemtype` = '".$item->getType()."')";
             $order      = '`glpi_changes`.`date_mod` DESC';
             break;
+      }
+
+      // Link to open a new change
+      if ($item->getID()
+          && Change::isPossibleToAssignType($item->getType())
+          && self::canCreate()
+          && !(!empty($withtemplate) && $withtemplate == 2)
+          && (!isset($item->fields['is_template']) || $item->fields['is_template'] == 0)) {
+         echo "<div class='firstbloc'>";
+         Html::showSimpleForm(
+            Change::getFormURL(),
+            '_add_fromitem',
+            __('New change for this item...'),
+            [
+               '_from_itemtype' => $item->getType(),
+               '_from_items_id' => $item->getID(),
+               'entities_id'    => $item->fields['entities_id']
+            ]
+         );
+         echo "</div>";
       }
 
       $query = "SELECT ".self::getCommonSelect()."

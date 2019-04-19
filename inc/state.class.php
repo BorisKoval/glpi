@@ -374,6 +374,33 @@ class State extends CommonTreeDropdown {
          'datatype'           => 'bool'
       ];
 
+      $tab[] = [
+         'id'                 => '31',
+         'table'              => $this->getTable(),
+         'field'              => 'is_visible_line',
+         'name'               => sprintf(__('%1$s - %2$s'), __('Visibility'),
+                                     Line::getTypeName(Session::getPluralNumber())),
+         'datatype'           => 'bool'
+      ];
+
+      $tab[] = [
+         'id'                 => '32',
+         'table'              => $this->getTable(),
+         'field'              => 'is_visible_enclosure',
+         'name'               => sprintf(__('%1$s - %2$s'), __('Visibility'),
+                                     Enclosure::getTypeName(Session::getPluralNumber())),
+         'datatype'           => 'bool'
+      ];
+
+      $tab[] = [
+         'id'                 => '33',
+         'table'              => $this->getTable(),
+         'field'              => 'is_visible_pdu',
+         'name'               => sprintf(__('%1$s - %2$s'), __('Visibility'),
+                                     PDU::getTypeName(Session::getPluralNumber())),
+         'datatype'           => 'bool'
+      ];
+
       return $tab;
    }
 
@@ -389,6 +416,14 @@ class State extends CommonTreeDropdown {
       return parent::prepareInputForUpdate($input);
    }
 
+   /**
+    * Checks that this state is unique given the new field values.
+    *    Unique fields checked:
+    *       - states_id
+    *       - name
+    * @param array $input Array of field names and values
+    * @return boolean True if the new/updated record will be unique
+    */
    public function isUnique($input) {
       global $DB;
 
@@ -397,10 +432,13 @@ class State extends CommonTreeDropdown {
       $has_changed = false;
       $where = [];
       foreach ($unicity_fields as $unicity_field) {
-         if (!isset($this->fields[$unicity_field]) || $input[$unicity_field] != $this->fields[$unicity_field]) {
+         if (isset($input[$unicity_field]) &&
+               (!isset($this->fields[$unicity_field]) || $input[$unicity_field] != $this->fields[$unicity_field])) {
             $has_changed = true;
          }
-         $where[$unicity_field] = $input[$unicity_field];
+         if (isset($input[$unicity_field])) {
+            $where[$unicity_field] = $input[$unicity_field];
+         }
       }
       if (!$has_changed) {
          //state has not changed; this is OK.

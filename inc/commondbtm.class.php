@@ -156,32 +156,35 @@ class CommonDBTM extends CommonGLPI {
    public $notificationqueueonaction = false;
 
    /**
-    * @deprecated 9.3.1 No longer used.
+    * Computed/forced values of classes tables.
+    * @var string[]
     */
-   const SUCCESS                    = 0; //Process is OK
-   /**
-    * @deprecated 9.3.1 No longer used.
-    */
-   const TYPE_MISMATCH              = 1; //Type is not good, value cannot be inserted
-   /**
-    * @deprecated 9.3.1 No longer used.
-    */
-   const ERROR_FIELDSIZE_EXCEEDED   = 2; //Value is bigger than the field's size
-   /**
-    * @deprecated 9.3.1 No longer used.
-    */
-   const HAS_DUPLICATE              = 3; //Can insert or update because it's duplicating another item
-   /**
-    * @deprecated 9.3.1 No longer used.
-    */
-   const NOTHING_TO_DO              = 4; //Nothing to insert or update
+   protected static $tables_of = [];
 
-
+   /**
+    * Computed values of classes foreign keys.
+    * @var string[]
+    */
+   protected static $foreign_key_fields_of = [];
 
    /**
     * Constructor
    **/
    function __construct () {
+   }
+
+
+   /**
+    * Get known tables
+    *
+    * @return array
+    *
+    * @deprecated 9.4.2
+    */
+   public static function getTablesOf() {
+      Toolbox::deprecated();
+
+      return self::$tables_of;
    }
 
 
@@ -193,7 +196,6 @@ class CommonDBTM extends CommonGLPI {
     * @return string
    **/
    static function getTable($classname = null) {
-
       if ($classname === null) {
          $classname = get_called_class();
       }
@@ -202,11 +204,11 @@ class CommonDBTM extends CommonGLPI {
          return '';
       }
 
-      if (empty($_SESSION['glpi_table_of'][$classname])) {
-         $_SESSION['glpi_table_of'][$classname] = getTableForItemType($classname);
+      if (!isset(self::$tables_of[$classname]) || empty(self::$tables_of[$classname])) {
+         self::$tables_of[$classname] = getTableForItemType($classname);
       }
 
-      return $_SESSION['glpi_table_of'][$classname];
+      return self::$tables_of[$classname];
    }
 
 
@@ -218,18 +220,33 @@ class CommonDBTM extends CommonGLPI {
     * @return void
    **/
    static function forceTable($table) {
-      $_SESSION['glpi_table_of'][get_called_class()] = $table;
+      self::$tables_of[get_called_class()] = $table;
+   }
+
+
+   /**
+    * Get known foreign keys
+    *
+    * @return array
+    *
+    * @deprecated 9.4.2
+    */
+   public static function getForeignKeyFieldsOf() {
+      Toolbox::deprecated();
+
+      return self::$foreign_key_fields_of;
    }
 
 
    static function getForeignKeyField() {
+      $classname = get_called_class();
 
-      if (empty($_SESSION['glpi_foreign_key_field_of'][get_called_class()])) {
-         $_SESSION['glpi_foreign_key_field_of'][get_called_class()]
-            = getForeignKeyFieldForTable(static::getTable());
+      if (!isset(self::$foreign_key_fields_of[$classname])
+         || empty(self::$foreign_key_fields_of[$classname])) {
+         self::$foreign_key_fields_of[$classname] = getForeignKeyFieldForTable(static::getTable());
       }
 
-      return $_SESSION['glpi_foreign_key_field_of'][get_called_class()];
+      return self::$foreign_key_fields_of[$classname];
    }
 
    /**
@@ -294,44 +311,6 @@ class CommonDBTM extends CommonGLPI {
          );
       }
 
-      return false;
-   }
-
-   /**
-    * Retrieve an item from the database by query. The query must include the WHERE keyword. Thus,
-    * we can replace "WHERE" to make complex SQL JOINED queries (for instance, see
-    * User::getFromDBbyEmail()).
-    *
-    * @since 0.84
-    * @deprecated 9.3
-    *
-    * @param string $query the "WHERE" or "JOIN" part of the SQL query
-    *
-    * @return boolean true if succeed else false
-   **/
-   function getFromDBByQuery($query) {
-      global $DB;
-
-      Toolbox::deprecated('Use DBmysqlIterator');
-
-      // Make new database object and fill variables
-
-      if (empty($query)) {
-         return false;
-      }
-
-      $query = "SELECT `".$this->getTable()."`.*
-                FROM `".$this->getTable()."`
-                $query";
-
-      if ($result = $DB->query($query)) {
-         if ($DB->numrows($result) == 1) {
-            $this->fields = $DB->fetch_assoc($result);
-            $this->post_getFromDB();
-
-            return true;
-         }
-      }
       return false;
    }
 
@@ -483,37 +462,69 @@ class CommonDBTM extends CommonGLPI {
    /**
     * Retrieve all items from the database
     *
-    * @param string $condition condition used to search if needed (empty get all) (default '')
-    * @param string $order     order field if needed (default '')
-    * @param string $limit     limit retrieved datas if needed (default '')
+    * @since 9.4 string condition is deprecated
+    *
+    * @param array        $condition condition used to search if needed (empty get all) (default '')
+    * @param array|string $order     order field if needed (default '')
+    * @param integer      $limit     limit retrieved data if needed (default '')
     *
     * @return array all retrieved data in a associative array by id
    **/
-   function find($condition = "", $order = "", $limit = "") {
+   function find($condition = [], $order = [], $limit = null) {
       global $DB;
       // Make new database object and fill variables
 
-      $query = "SELECT *
-                FROM `".$this->getTable()."`";
+      if (!is_array($condition)) {
+         Toolbox::deprecated('Using string condition in find is deprecated!');
 
-      if (!empty($condition)) {
-         $query .= " WHERE $condition";
-      }
+         $query = "SELECT *
+                  FROM `".$this->getTable()."`";
 
-      if (!empty($order)) {
-         $query .= " ORDER BY $order";
-      }
+         if (!empty($condition)) {
+            $query .= " WHERE $condition";
+         }
 
-      if (!empty($limit)) {
-         $query .= " LIMIT ".intval($limit);
-      }
+         if (!empty($order)) {
+            $query .= " ORDER BY $order";
+         }
 
-      $data = [];
-      if ($result = $DB->query($query)) {
-         if ($DB->numrows($result)) {
-            while ($line = $DB->fetch_assoc($result)) {
-               $data[$line['id']] = $line;
+         if (!empty($limit)) {
+            $query .= " LIMIT ".intval($limit);
+         }
+
+         $data = [];
+         if ($result = $DB->query($query)) {
+            if ($DB->numrows($result)) {
+               while ($line = $DB->fetch_assoc($result)) {
+                  $data[$line['id']] = $line;
+               }
             }
+         }
+      } else {
+         //@since 9.4: use iterator
+         $criteria = [
+            'FROM'   => $this->getTable()
+         ];
+
+         if (count($condition)) {
+            $criteria['WHERE'] = $condition;
+         }
+
+         if (!is_array($order)) {
+            $order = [$order];
+         }
+         if (count($order)) {
+            $criteria['ORDERBY'] = $order;
+         }
+
+         if ((int)$limit > 0) {
+            $criteria['LIMIT'] = (int)$limit;
+         }
+
+         $data = [];
+         $iterator = $DB->request($criteria);
+         while ($line = $iterator->next()) {
+            $data[$line['id']] = $line;
          }
       }
 
@@ -1101,6 +1112,9 @@ class CommonDBTM extends CommonGLPI {
          $this->filterValues(!isCommandLine());
       }
 
+      //Process business rules for assets
+      $this->assetBusinessRules(\RuleAsset::ONADD);
+
       if ($this->input && is_array($this->input)) {
          $this->fields = [];
          $table_fields = $DB->list_fields($this->getTable());
@@ -1114,12 +1128,12 @@ class CommonDBTM extends CommonGLPI {
          }
 
          // Auto set date_creation if exsist
-         if (isset($table_fields['date_creation'])) {
+         if (isset($table_fields['date_creation']) && !isset($this->input['date_creation'])) {
             $this->fields['date_creation'] = $_SESSION["glpi_currenttime"];
          }
 
          // Auto set date_mod if exsist
-         if (isset($table_fields['date_mod'])) {
+         if (isset($table_fields['date_mod']) && !isset($this->input['date_mod'])) {
             $this->fields['date_mod'] = $_SESSION["glpi_currenttime"];
          }
 
@@ -1355,6 +1369,9 @@ class CommonDBTM extends CommonGLPI {
          $this->filterValues(!isCommandLine());
       }
 
+      //Process business rules for assets
+      $this->assetBusinessRules(\RuleAsset::ONUPDATE);
+
       // Valid input for update
       if ($this->checkUnicity(false, $options)) {
          if ($this->input && is_array($this->input)) {
@@ -1489,14 +1506,17 @@ class CommonDBTM extends CommonGLPI {
                'FROM'   => $item->getTable()
             ];
 
+            $OR = [];
             if ($item->isField('itemtype')) {
-               $query['WHERE'] = [
+               $OR[] = [
                   'itemtype'  => $this->getType(),
                   'items_id'  => $this->getID()
                ];
-            } else {
-               $query['WHERE'] = [$this->getForeignKeyField() => $this->getID()];
             }
+            if ($item->isField($this->getForeignKeyField())) {
+               $OR[] = [$this->getForeignKeyField() => $this->getID()];
+            }
+            $query['WHERE'][] = ['OR' => $OR];
 
             $input = ['entities_id' => $this->getEntityID()];
             if ($this->maybeRecursive()) {
@@ -3572,71 +3592,51 @@ class CommonDBTM extends CommonGLPI {
     * @see https://glpi-developer-documentation.rtfd.io/en/master/devapi/search.html
    **/
    public final function searchOptions() {
-      $options = [];
+      static $options;
 
-      if (method_exists(get_class($this), 'getSearchOptions')) {
-         if (defined('TU_USER')) {
-            throw new \RuntimeException('getSearchOptions must not be used!');
-         }
-         Toolbox::deprecated('getSearchOptions should not be used. Check the docs.');
-         $options = $this->getSearchOptions();
-      }
+      if (!isset($options)) {
+         $options = [];
 
-      foreach ($this->rawSearchOptions() as $opt) {
-         $missingFields = [];
-         if (!isset($opt['id'])) {
-            $missingFields[] = 'id';
-         }
-         if (!isset($opt['name'])) {
-            $missingFields[] = 'name';
-         }
-         if (count($missingFields) > 0) {
-            throw new \Exception(
-               vsprintf(
-                  'Invalid search option in "%1$s": missing "%2$s" field(s). %3$s',
-                  [
-                     get_called_class(),
-                     implode('", "', $missingFields),
-                     print_r($opt, true)
-                  ]
-               )
-            );
-         }
+         foreach ($this->rawSearchOptions() as $opt) {
+            $missingFields = [];
+            if (!isset($opt['id'])) {
+               $missingFields[] = 'id';
+            }
+            if (!isset($opt['name'])) {
+               $missingFields[] = 'name';
+            }
+            if (count($missingFields) > 0) {
+               throw new \Exception(
+                  vsprintf(
+                     'Invalid search option in "%1$s": missing "%2$s" field(s). %3$s',
+                     [
+                        get_called_class(),
+                        implode('", "', $missingFields),
+                        print_r($opt, true)
+                     ]
+                  )
+               );
+            }
 
-         $optid = $opt['id'];
-         unset($opt['id']);
+            $optid = $opt['id'];
+            unset($opt['id']);
 
-         if (isset($options[$optid])) {
-            $message = "Duplicate key $optid ({$options[$optid]['name']}/{$opt['name']}) in ".
-                get_class($this) . " searchOptions!";
+            if (isset($options[$optid])) {
+               $message = "Duplicate key $optid ({$options[$optid]['name']}/{$opt['name']}) in ".
+                   get_class($this) . " searchOptions!";
 
-            Toolbox::logError($message);
-         }
+               Toolbox::logError($message);
+            }
 
-         foreach ($opt as $k => $v) {
-            $options[$optid][$k] = $v;
+            foreach ($opt as $k => $v) {
+               $options[$optid][$k] = $v;
+            }
          }
       }
 
       return $options;
    }
 
-   /**
-    * Get the Search options for the given Type
-    *
-    * @since 9.2
-    * @deprecated 9.3
-    *
-    * This should be overloaded in Class
-    *
-    * @return array a *not indexed* array of search options
-    *
-    * @see https://glpi-developer-documentation.rtfd.io/en/master/devapi/search.html
-   **/
-   function getSearchOptionsNew() {
-      Toolbox::deprecated('Use rawSearchOptions instead');
-      return $this->rawSearchOptions();
-   }
 
    /**
     * Provides search options configuration. Do not rely directly
@@ -3694,10 +3694,7 @@ class CommonDBTM extends CommonGLPI {
 
       $classname = get_called_class();
       $method_name = 'rawSearchOptionsToAdd';
-      if (method_exists($classname, 'getSearchOptionsToAddNew')) {
-         Toolbox::deprecated('getSearchOptionsToAddNew must be replaced with rawSearchOptionsToAdd');
-         $method_name = 'getSearchOptionsToAddNew';
-      } else if (!method_exists($classname, $method_name)) {
+      if (!method_exists($classname, $method_name)) {
          return $options;
       }
 
@@ -5034,7 +5031,6 @@ class CommonDBTM extends CommonGLPI {
     *                        - force_update (default false) update the content field of the object
     *                        - content_field (default content) the field who receive the main text
     *                                                          (with images)
-    *                        - use_rich_text (default false) to force the use of rich text
     *
     * @return array the input param transformed
    **/
@@ -5043,8 +5039,7 @@ class CommonDBTM extends CommonGLPI {
 
       $default_options = [
          'force_update'  => false,
-         'content_field' => 'content',
-         'use_rich_text' => false
+         'content_field' => 'content'
       ];
       $options = array_merge($default_options, $options);
 
@@ -5140,11 +5135,9 @@ class CommonDBTM extends CommonGLPI {
             }
 
             // if doc is an image and already inserted in content, do not attach in docitem
-            // (except if not using rich text as image will be stripped in this case)
             if (isset($input[$options['content_field']])
                 && strpos($input[$options['content_field']], $doc->fields["tag"]) !== false
-                && strpos($doc->fields['mime'], 'image/') !== false
-                && ($CFG_GLPI["use_rich_text"] || $options['use_rich_text'])) {
+                && strpos($doc->fields['mime'], 'image/') !== false) {
                $skip_docitem = true;
             }
 
@@ -5169,15 +5162,11 @@ class CommonDBTM extends CommonGLPI {
 
       // manage content transformation
       if (isset($input[$options['content_field']])) {
-         if ($CFG_GLPI["use_rich_text"] or $options['use_rich_text']) {
-            $input[$options['content_field']]
-               = Toolbox::convertTagToImage($input[$options['content_field']],
-                                            $this,
-                                            $docadded);
-         } else {
-            $input[$options['content_field']]
-               = Html::setSimpleTextContent($input[$options['content_field']]);
-         }
+         $input[$options['content_field']] = Toolbox::convertTagToImage(
+            $input[$options['content_field']],
+            $this,
+            $docadded
+         );
 
          if (isset($this->input['_forcenotif'])) {
             $input['_forcenotif'] = $this->input['_forcenotif'];
@@ -5227,5 +5216,45 @@ class CommonDBTM extends CommonGLPI {
          $mark = "<i class='fa fa-magic' title='$title'></i>";
       }
       return $mark;
+   }
+
+   /**
+   * Manage business rules for assets
+   *
+   * @since 9.4
+   *
+   * @param boolean $condition the condition (RuleAsset::ONADD or RuleAsset::ONUPDATE)
+   *
+   * @return void
+   */
+   private function assetBusinessRules($condition) {
+      global $CFG_GLPI;
+
+      //Only process itemtype that are assets
+      if (in_array($this->getType(), $CFG_GLPI['asset_types'])) {
+         $ruleasset          = new RuleAssetCollection();
+         $input              = $this->input;
+         $input['_itemtype'] = $this->getType();
+
+         //If _auto is not defined : it's a manual process : set it's value to 0
+         if (!isset($this->input['_auto'])) {
+            $input['_auto'] = 0;
+         }
+         //Set the condition (add or update)
+         $params = [
+            'condition' => $condition
+         ];
+         $output = $ruleasset->processAllRules($input, [], $params);
+         //If at least one rule has matched
+         if (isset($output['_rule_process'])) {
+            foreach ($output as $key => $value) {
+               if ($key == '_rule_process' || $key == '_no_rule_matches') {
+                  continue;
+               }
+               //Add the rule output to the input array
+               $this->input[$key] = $value;
+            }
+         }
+      }
    }
 }

@@ -54,9 +54,6 @@ class NotificationTargetChange extends NotificationTargetCommonITILObject {
                       'solved'            => __('Change solved'),
                       'validation'        => __('Validation request'),
                       'validation_answer' => __('Validation request answer'),
-                      'add_task'          => __('New task'),
-                      'update_task'       => __('Update of a task'),
-                      'delete_task'       => __('Deletion of a task'),
                       'closed'            => __('Closure of a change'),
                       'delete'            => __('Deleting a change')];
 

@@ -172,7 +172,7 @@ class Project extends CommonDBTM {
       $this->addStandardTab('ProjectTeam', $ong, $options);
       $this->addStandardTab(__CLASS__, $ong, $options);
       $this->addStandardTab('ProjectCost', $ong, $options);
-      $this->addStandardTab('Change_Project', $ong, $options);
+      $this->addStandardTab('Itil_Project', $ong, $options);
       $this->addStandardTab('Item_Project', $ong, $options);
       $this->addStandardTab('Document_Item', $ong, $options);
       $this->addStandardTab('Contract_Item', $ong, $options);
@@ -191,10 +191,6 @@ class Project extends CommonDBTM {
           && Session::haveRight('projecttask', ProjectTask::READMY)) {
          $menu['project']['title'] = Project::getTypeName(Session::getPluralNumber());
          $menu['project']['page']  = ProjectTask::getSearchURL(false);
-
-         if (count($links)) {
-            $menu['project']['links'] = $links;
-         }
 
          return $menu;
       }
@@ -265,8 +261,8 @@ class Project extends CommonDBTM {
          // ADD Team
          ProjectTeam::cloneProjectTeam($this->input["_oldID"], $this->fields['id']);
 
-         // ADD Change
-         Change_Project::cloneChangeProject($this->input["_oldID"], $this->fields['id']);
+         // ADD Itil
+         Itil_Project::cloneItilProject($this->input["_oldID"], $this->fields['id']);
 
          // ADD Contract
          Contract::cloneItem($this->getType(), $this->input["_oldID"], $this->fields['id']);
@@ -318,8 +314,8 @@ class Project extends CommonDBTM {
 
       $this->deleteChildrenAndRelationsFromDb(
          [
-            Change_Project::class,
             Item_Project::class,
+            Itil_Project::class,
             ProjectCost::class,
             ProjectTask::class,
             ProjectTeam::class,
@@ -332,46 +328,106 @@ class Project extends CommonDBTM {
    /**
     * Return visibility joins to add to SQL
     *
+    * @deprecated 9.4.0
+    *
     * @return string joins to add
     **/
    static function addVisibilityJoins() {
+      global $DB;
 
-      $join = '';
+      Toolbox::deprecated('Use getVisibilityCriteria');
 
-      if (!Session::haveRight("project", Project::READALL)) {
-         $join .= " LEFT JOIN `glpi_projectteams`
-                     ON (`glpi_projectteams`.`projects_id` = `glpi_projects`.`id`) ";
-      }
+      //get and clean criteria
+      $criteria = self::getVisibilityCriteria();
+      unset($criteria['WHERE']);
+      $criteria['FROM'] = self::getTable();
 
-      return $join;
+      $it = new \DBmysqlIterator(null);
+      $it->buildQuery($criteria);
+      $sql = $it->getSql();
+      $sql = str_replace(
+         'SELECT * FROM '.$DB->quoteName(self::getTable()).' ',
+         '',
+         $sql
+      );
+      return $sql;
    }
 
    /**
     * Return visibility to add to SQL
     *
+    * @deprecated 9.4.0
+    *
     * @return string joins to add
     **/
    static function addVisibility() {
+      Toolbox::deprecated('Use getVisibilityCriteria');
 
-      $condition = '';
-      if (!Session::haveRight("project", Project::READALL)) {
-         $teamtable = 'glpi_projectteams';
-         $condition .= "AND (`glpi_projects`.users_id = '" . Session::getLoginUserID() . "'
-                               OR (`$teamtable`.`itemtype` = 'User'
-                                   AND `$teamtable`.`items_id` = '" . Session::getLoginUserID() . "')";
-         if (count($_SESSION['glpigroups'])) {
-            $condition .= " OR (`glpi_projects`.`groups_id`
-                                       IN (" . implode(",", $_SESSION['glpigroups']) . "))";
-            $condition .= " OR (`$teamtable`.`itemtype` = 'Group'
-                                      AND `$teamtable`.`items_id`
-                                          IN (" . implode(",", $_SESSION['glpigroups']) . "))";
-         }
-         $condition .= ") ";
-      }
+      //get and clean criteria
+      $criteria = self::getVisibilityCriteria();
+      unset($criteria['LEFT JOIN']);
+      $criteria['FROM'] = self::getTable();
 
-      return $condition;
+      $it = new \DBmysqlIterator(null);
+      $it->buildQuery($criteria);
+      $sql = $it->getSql();
+      $sql = preg_replace('/.*WHERE /', '', $sql);
+
+      return $sql;
    }
 
+   /**
+    * Return visibility joins to add to DBIterator parameters
+    *
+    * @since 9.4
+    *
+    * @param boolean $forceall force all joins (false by default)
+    *
+    * @return array
+    */
+   static public function getVisibilityCriteria($forceall = false) {
+      global $CFG_GLPI;
+
+      if (Session::haveRight('project', self::READALL)) {
+         return [
+            'LEFT JOIN' => [],
+            'WHERE' => [],
+         ];
+      }
+
+      $join = [];
+      $where = [];
+
+      $join['glpi_projectteams'] = [
+         'ON' => [
+            'glpi_projectteams'  => 'projects_id',
+            'glpi_projects'      => 'id'
+         ]
+      ];
+
+      $teamtable = 'glpi_projectteams';
+      $where['OR'] = [
+         'glpi_projects.users_id'   => Session::getLoginUserID(),
+         [
+            "$teamtable.itemtype"   => 'User',
+            "$teamtable.items_id"   => Session::getLoginUserID()
+         ]
+      ];
+      if (count($_SESSION['glpigroups'])) {
+         $where['OR']['glpi_projects.groups_id'] = $_SESSION['glpigroups'];
+         $where['OR'][] = [
+            "$teamtable.itemtype"   => 'Group',
+            "$teamtable.items_id"   => $_SESSION['glpigroups']
+         ];
+      }
+
+      $criteria = [
+         'LEFT JOIN' => $join,
+         'WHERE'     => $where
+      ];
+
+      return $criteria;
+   }
    /**
     * Is the current user in the team?
     *
@@ -565,7 +621,7 @@ class Project extends CommonDBTM {
          'field'              => 'completename',
          'linkfield'          => 'groups_id',
          'name'               => __('Manager group'),
-         'condition'          => '`is_manager`',
+         'condition'          => ['is_manager' => 1],
          'datatype'           => 'dropdown'
       ];
 
@@ -666,6 +722,29 @@ class Project extends CommonDBTM {
       ];
 
       $tab[] = [
+         'id'                 => '91',
+         'table'              => ProjectCost::getTable(),
+         'field'              => 'totalcost',
+         'name'               => __('Total cost'),
+         'datatype'           => 'decimal',
+         'forcegroupby'       => true,
+         'usehaving'          => true,
+         'massiveaction'      => false,
+         'joinparams'         => [
+            'jointype'           => 'child',
+            'specific_itemtype'  => 'ProjectCost',
+            'condition'          => 'AND NEWTABLE.`projects_id` = REFTABLE.`id`',
+            'beforejoin'         => [
+               'table'        => $this->getTable(),
+               'joinparams'   => [
+                  'jointype'  => 'child'
+               ],
+            ],
+         ],
+         'computation'        => '(SUM(TABLE.`cost`))'
+      ];
+
+      $tab[] = [
          'id'                 => 'project_team',
          'name'               => ProjectTeam::getTypeName(),
       ];
@@ -745,6 +824,30 @@ class Project extends CommonDBTM {
             ]
          ]
       ];
+
+      $itil_count_types = [
+         'Change'  => _x('quantity', 'Number of changes'),
+         'Problem' => _x('quantity', 'Number of problems'),
+         'Ticket'  => _x('quantity', 'Number of tickets'),
+      ];
+      $index = 92;
+      foreach ($itil_count_types as $itil_type => $label) {
+         $tab[] = [
+            'id'                 => $index,
+            'table'              => Itil_Project::getTable(),
+            'field'              => 'id',
+            'name'               => $label,
+            'datatype'           => 'count',
+            'forcegroupby'       => true,
+            'usehaving'          => true,
+            'massiveaction'      => false,
+            'joinparams'         => [
+               'jointype'           => 'child',
+               'condition'          => "AND NEWTABLE.`itemtype` = '$itil_type'"
+            ]
+         ];
+         $index++;
+      }
 
       // add objectlock search options
       $tab = array_merge($tab, ObjectLock::rawSearchOptionsToAdd(get_class($this)));
@@ -1002,13 +1105,14 @@ class Project extends CommonDBTM {
       $this->check($ID, READ);
       $rand = mt_rand();
 
-      $query = "SELECT *
-                FROM `".$this->getTable()."`
-                WHERE `".$this->getForeignKeyField()."` = '$ID'
-                AND `is_deleted`=0";
-      if ($result = $DB->query($query)) {
-         $numrows = $DB->numrows($result);
-      }
+      $iterator = $DB->request([
+         'FROM'   => $this->getTable(),
+         'WHERE'  => [
+            $this->getForeignKeyField()   => $ID,
+            'is_deleted'                  => 0
+         ]
+      ]);
+      $numrows = count($iterator);
 
       if ($this->can($ID, UPDATE)) {
          echo "<div class='firstbloc'>";
@@ -1034,7 +1138,7 @@ class Project extends CommonDBTM {
                                                  $this->fields["name"]));
 
          $i = 0;
-         while ($data = $DB->fetch_assoc($result)) {
+         while ($data = $iterator->next()) {
             Session::addToNavigateListItems('Project', $data["id"]);
             Project::showShort($data['id'], ['row_num' => $i]);
             $i++;
@@ -1145,10 +1249,12 @@ class Project extends CommonDBTM {
       echo "</td>";
       echo "<td>".__('Group')."</td>";
       echo "<td>";
-      Group::dropdown(['name'      => 'groups_id',
-                            'value'     => $this->fields['groups_id'],
-                            'entity'    => $this->fields['entities_id'],
-                            'condition' => '`is_manager`']);
+      Group::dropdown([
+         'name'      => 'groups_id',
+         'value'     => $this->fields['groups_id'],
+         'entity'    => $this->fields['entities_id'],
+         'condition' => ['is_manager' => 1]
+      ]);
       echo "</td></tr>\n";
 
       echo "<tr><td colspan='4' class='subheader'>".__('Planning')."</td></tr>";

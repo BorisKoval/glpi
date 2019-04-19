@@ -54,21 +54,11 @@ class ConsumableItem extends CommonDBTM {
    }
 
 
-   /**
-    * @see CommonGLPI::getMenuName()
-    *
-    * @since 0.85
-   **/
    static function getMenuName() {
       return Consumable::getTypeName(Session::getPluralNumber());
    }
 
 
-   /**
-    * @see CommonGLPI::getAdditionalMenuLinks()
-    *
-    * @since 0.85
-   **/
    static function getAdditionalMenuLinks() {
 
       if (static::canView()) {
@@ -78,11 +68,6 @@ class ConsumableItem extends CommonDBTM {
    }
 
 
-   /**
-    * @since 0.84
-    *
-    * @see CommonDBTM::getPostAdditionalInfosForName
-   **/
    function getPostAdditionalInfosForName() {
 
       if (isset($this->fields["ref"]) && !empty($this->fields["ref"])) {
@@ -132,16 +117,14 @@ class ConsumableItem extends CommonDBTM {
    /**
     * Print the consumable type form
     *
-    * @param $ID        integer ID of the item
-    * @param $options   array
-    *     - target filename : where to go when done.
-    *     - withtemplate boolean : template or basic item
+    * @param integer $ID    ID of the item
+    * @param array $options
+    *    - target filename : where to go when done.
+    *    - withtemplate boolean : template or basic item
     *
-    * @return Nothing (display)
-    *
-    **/
+    * @return true
+    */
    function showForm($ID, $options = []) {
-      global $CFG_GLPI;
 
       $this->initForm($ID, $options);
       $this->showFormHeader($options);
@@ -174,18 +157,20 @@ class ConsumableItem extends CommonDBTM {
                            'right'  => 'own_ticket',
                            'entity' => $this->fields["entities_id"]]);
       echo "</td>";
-      echo "<td rowspan='4' class='middle'>".__('Comments')."</td>";
-      echo "<td class='middle' rowspan='4'>
+      echo "<td rowspan='5' class='middle'>".__('Comments')."</td>";
+      echo "<td class='middle' rowspan='5'>
              <textarea cols='45' rows='9' name='comment' >".$this->fields["comment"]."</textarea>";
       echo "</td></tr>";
 
       echo "<tr class='tab_bg_1'>";
       echo "<td>".__('Group in charge of the hardware')."</td>";
       echo "<td>";
-      Group::dropdown(['name'      => 'groups_id_tech',
-                            'value'     => $this->fields['groups_id_tech'],
-                            'entity'    => $this->fields['entities_id'],
-                            'condition' => '`is_assign`']);
+      Group::dropdown([
+         'name'      => 'groups_id_tech',
+         'value'     => $this->fields['groups_id_tech'],
+         'entity'    => $this->fields['entities_id'],
+         'condition' => ['is_assign' => 1]
+      ]);
       echo "</td></tr>\n";
 
       echo "<tr class='tab_bg_1'>";
@@ -206,6 +191,21 @@ class ConsumableItem extends CommonDBTM {
 
       Alert::displayLastAlert('ConsumableItem', $ID);
       echo "</td></tr>";
+
+      echo "<tr>";
+      $tplmark = $this->getAutofillMark('otherserial', $options);
+      echo "<td>".sprintf(__('%1$s%2$s'), __('Inventory number'), $tplmark)."</td>";
+      echo "<td>";
+      $objectName = autoName(
+         $this->fields["otherserial"],
+         "otherserial",
+         (isset($options['withtemplate']) && ($options['withtemplate'] == 2)),
+         $this->getType(),
+         $this->fields["entities_id"]
+      );
+      Html::autocompletionTextField($this, 'otherserial', ['value' => $objectName]);
+      echo "</td>";
+      echo "</tr>";
 
       $this->showFormButtons($options);
 
@@ -244,6 +244,14 @@ class ConsumableItem extends CommonDBTM {
          'table'              => $this->getTable(),
          'field'              => 'ref',
          'name'               => __('Reference'),
+         'datatype'           => 'string'
+      ];
+
+      $tab[] = [
+         'id'                 => '6',
+         'table'              => $this->getTable(),
+         'field'              => 'otherserial',
+         'name'               => __('Inventory number'),
          'datatype'           => 'string'
       ];
 
@@ -324,7 +332,7 @@ class ConsumableItem extends CommonDBTM {
          'field'              => 'completename',
          'linkfield'          => 'groups_id_tech',
          'name'               => __('Group in charge of the hardware'),
-         'condition'          => '`is_assign`',
+         'condition'          => ['is_assign' => 1],
          'datatype'           => 'dropdown'
       ];
 
@@ -373,11 +381,11 @@ class ConsumableItem extends CommonDBTM {
    /**
     * Cron action on consumables : alert if a stock is behind the threshold
     *
-    * @param $task   to log, if NULL display (default NULL)
+    * @param CronTask|null $task to log, if NULL display (default NULL)
     *
-    * @return 0 : nothing to do 1 : done with success
+    * @return integer 0 : nothing to do 1 : done with success
    **/
-   static function cronConsumable($task = null) {
+   static function cronConsumable(CronTask $task = null) {
       global $DB, $CFG_GLPI;
 
       $cron_status = 1;
@@ -515,20 +523,9 @@ class ConsumableItem extends CommonDBTM {
    }
 
 
-   /**
-    * Have I the right to "update" the Object
-    *
-    * Default is true and check entity if the objet is entity assign
-    *
-    * May be overloaded if needed
-    *
-    * Overriden here to check entities recursively
-    *
-    * @return boolean
-   **/
    function canUpdateItem() {
 
-      if (!$this->checkEntity(true)) {
+      if (!$this->checkEntity(true)) { //check entities recursively
          return false;
       }
       return true;

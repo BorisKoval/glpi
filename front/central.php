@@ -72,16 +72,6 @@ if (isset($_GET["redirect"])) {
    Toolbox::manageRedirect($_GET["redirect"]);
 }
 
-//вывод логина + компа и т.д.
-echo gethostname()."\r\n";
-
-echo $_SESSION['glpiname']."\r\n";
-
-echo $_SERVER['REMOTE_ADDR']."\r\n";
-
-echo gethostbyaddr($_SERVER['REMOTE_ADDR'])."\r\n";
-
-
 $central = new Central();
 $central->display();
 

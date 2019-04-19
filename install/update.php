@@ -37,6 +37,13 @@ if (!defined('GLPI_ROOT')) {
 include_once (GLPI_ROOT . "/inc/based_config.php");
 include_once (GLPI_ROOT . "/inc/db.function.php");
 include_once (GLPI_CONFIG_DIR . "/config_db.php");
+
+$GLPI_CACHE = Config::getCache('cache_db');
+$GLPI_CACHE->clear(); // Force cache cleaning to prevent usage of outdated cache data
+
+$translation_cache = Config::getCache('cache_trans');
+$translation_cache->clear(); // Force cache cleaning to prevent usage of outdated cache data
+
 Config::detectRootDoc();
 
 $GLPI = new GLPI();
@@ -445,7 +452,7 @@ function changeVarcharToID($table1, $table2, $chps) {
 
 //update database
 function doUpdateDb() {
-   global $DB, $migration, $update;
+   global $DB, $GLPI_CACHE, $migration, $update;
 
    $currents            = $update->getCurrents();
    $current_version     = $currents['version'];
@@ -462,6 +469,7 @@ function doUpdateDb() {
    }
 
    $update->doUpdates($current_version);
+   $GLPI_CACHE->clear();
 }
 
 
@@ -502,7 +510,7 @@ $HEADER_LOADED = true;
 
 Session::start();
 
-Session::loadLanguage();
+Session::loadLanguage('', false);
 
 // Send UTF8 Headers
 header("Content-Type: text/html; charset=UTF-8");
@@ -515,7 +523,7 @@ echo "<meta http-equiv='Content-Script-Type' content='text/javascript'>";
 echo "<meta http-equiv='Content-Style-Type' content='text/css'>";
 echo "<title>Setup GLPI</title>";
 //JS
-echo Html::script("../lib/jquery/js/jquery-1.10.2.min.js");
+echo Html::script("lib/jquery/js/jquery.js");
 echo Html::script('lib/jquery/js/jquery-ui-1.10.4.custom.js');
 // CSS
 echo "<link rel='stylesheet' href='../css/style_install.css' type='text/css' media='screen' >";

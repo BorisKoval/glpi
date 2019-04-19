@@ -179,7 +179,8 @@ class Session {
    **/
    static function setPath() {
 
-      if (ini_get("session.save_handler") == "files") {
+      if (ini_get("session.save_handler") == "files"
+          && session_status() !== PHP_SESSION_ACTIVE) {
          session_save_path(GLPI_SESSION_DIR);
       }
    }
@@ -255,19 +256,6 @@ class Session {
       return (isCommandLine()
               || ((countElementsInTable("glpi_entities")) == count($_SESSION["glpiactiveentities"])));
 
-   }
-
-   /*
-    * Does user have right to see all entities?
-    *
-    * @deprecated 9.3.2
-    *
-    * @return boolean
-   **/
-
-   static function isViewAllEntities() {
-      Toolbox::deprecated('Use canViewAllEntities');
-      return self::canViewAllEntities();
    }
 
 
@@ -463,9 +451,6 @@ class Session {
       if (isset($_SESSION['glpimenu'])) {
          unset($_SESSION['glpimenu']);
       }
-      if (isset($_SESSION['glpi_faqcategories'])) {
-         unset($_SESSION['glpi_faqcategories']);
-      }
    }
 
 
@@ -540,17 +525,29 @@ class Session {
 
       $_SESSION["glpigroups"] = [];
 
-      $query_gp = "SELECT `glpi_groups_users`.`groups_id`
-                   FROM `glpi_groups_users`
-                   LEFT JOIN `glpi_groups` ON (`glpi_groups_users`.`groups_id` = `glpi_groups`.`id`)
-                   WHERE `glpi_groups_users`.`users_id`='" . self::getLoginUserID() . "' " .
-                         getEntitiesRestrictRequest(" AND ", "glpi_groups", "entities_id",
-                                                    $_SESSION['glpiactiveentities'], true);
-      $result_gp = $DB->query($query_gp);
-      if ($DB->numrows($result_gp)) {
-         while ($data = $DB->fetch_assoc($result_gp)) {
-            $_SESSION["glpigroups"][] = $data["groups_id"];
-         }
+      $iterator = $DB->request([
+         'SELECT'    => Group_User::getTable() . '.groups_id',
+         'FROM'      => Group_User::getTable(),
+         'LEFT JOIN' => [
+            Group::getTable() => [
+               'ON' => [
+                  Group::getTable()       => 'id',
+                  Group_User::getTable()  => 'groups_id'
+               ]
+            ]
+         ],
+         'WHERE'     => [
+            Group_User::getTable(). '.users_id' => self::getLoginUserID()
+         ] + getEntitiesRestrictCriteria(
+            Group::getTable(),
+            'entities_id',
+            $_SESSION['glpiactiveentities'],
+            true
+         )
+      ]);
+
+      while ($data = $iterator->next()) {
+         $_SESSION["glpigroups"][] = $data["groups_id"];
       }
    }
 
@@ -561,11 +558,12 @@ class Session {
     * Get the default language from current user in $_SESSION["glpilanguage"].
     * And load the dict that correspond.
     *
-    * @param string $forcelang Force to load a specific lang (default '')
+    * @param string  $forcelang     Force to load a specific lang
+    * @param boolean $with_plugins  Whether to load plugin languages or not
     *
     * @return void
    **/
-   static function loadLanguage($forcelang = '') {
+   static function loadLanguage($forcelang = '', $with_plugins = true) {
       global $LANG, $CFG_GLPI, $TRANSLATE;
 
       $file = "";
@@ -606,29 +604,21 @@ class Session {
          $_SESSION['glpipluralnumber'] = $CFG_GLPI["languages"][$trytoload][5];
       }
       $TRANSLATE = new Zend\I18n\Translator\Translator;
+      $TRANSLATE->setLocale($trytoload);
+
       $cache = Config::getCache('cache_trans', 'core', false);
       if ($cache !== false) {
          $TRANSLATE->setCache($cache);
       }
+
       $TRANSLATE->addTranslationFile('gettext', GLPI_ROOT.$newfile, 'glpi', $trytoload);
 
       // Load plugin dicts
-      foreach (Plugin::getPlugins() as $plug) {
-         Plugin::loadLang($plug, $forcelang, $trytoload);
+      if ($with_plugins) {
+         foreach (Plugin::getPlugins() as $plug) {
+            Plugin::loadLang($plug, $forcelang, $trytoload);
+         }
       }
-
-      // TRANSLATION_MODE deleted : maybe find another solution ?
-      // Debug display lang element with item
-      // if ($_SESSION['glpi_use_mode'] == Session::TRANSLATION_MODE && $CFG_GLPI["debug_lang"]) {
-      //    foreach ($LANG as $module => $tab) {
-      //       foreach ($tab as $num => $val) {
-      //          $LANG[$module][$num] = "".$LANG[$module][$num].
-      //                                 "/<span style='font-size:12px; color:red;'>$module/$num</span>";
-      //       }
-      //    }
-      // }
-
-      $TRANSLATE->setLocale($trytoload);
 
       return $trytoload;
    }

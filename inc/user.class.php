@@ -450,52 +450,26 @@ class User extends CommonDBTM {
    function getFromDBbyEmail($email, $condition = []) {
       global $DB;
 
-      if (is_array($condition)) {
-         $crit = [
-            'SELECT'    => $this->getTable() . '.id',
-            'FROM'      => $this->getTable(),
-            'LEFT JOIN'  => [
-               'glpi_useremails' => [
-                  'FKEY' => [
-                     $this->getTable() => 'id',
-                     'glpi_useremails' => 'users_id'
-                  ]
+      $crit = [
+         'SELECT'    => $this->getTable() . '.id',
+         'FROM'      => $this->getTable(),
+         'LEFT JOIN'  => [
+            'glpi_useremails' => [
+               'FKEY' => [
+                  $this->getTable() => 'id',
+                  'glpi_useremails' => 'users_id'
                ]
-            ],
-            'WHERE'     => ['glpi_useremails.email' => $email] + $condition
-         ];
+            ]
+         ],
+         'WHERE'     => ['glpi_useremails.email' => $email] + $condition
+      ];
 
-         $iter = $DB->request($crit);
-         if ($iter->numrows()==1) {
-            $row = $iter->next();
-            return $this->getFromDB($row['id']);
-         }
-         return false;
-      } else {
-         Toolbox::deprecated('condition param for getFromDBbyEmail must be an array');
-         $request = "LEFT JOIN `glpi_useremails`
-                     ON (`glpi_useremails`.`users_id` = `".$this->getTable()."`.`id`)
-                     WHERE `glpi_useremails`.`email` = '$email'";
-
-         if (!empty($condition)) {
-            $request .= " AND $condition";
-         }
-
-         //return $this->getFromDBByQuery($request);
-         $query = "SELECT `".$this->getTable()."`.*
-                  FROM `".$this->getTable()."`
-                  $request";
-
-         if ($result = $DB->query($query)) {
-            if ($DB->numrows($result) == 1) {
-               $this->fields = $DB->fetch_assoc($result);
-               $this->post_getFromDB();
-
-               return true;
-            }
-         }
-         return false;
+      $iter = $DB->request($crit);
+      if ($iter->numrows()==1) {
+         $row = $iter->next();
+         return $this->getFromDB($row['id']);
       }
+      return false;
    }
 
 
@@ -733,9 +707,9 @@ class User extends CommonDBTM {
                $extension    = Toolbox::strtolower(array_pop($tmp));
                @mkdir(GLPI_PICTURE_DIR . "/$sub");
                $picture_path = GLPI_PICTURE_DIR  . "/$sub/${filename}.$extension";
-               self::dropPictureFiles($filename.".".$extension);
+               self::dropPictureFiles("$sub/${filename}.$extension");
 
-               if (Document::isImage($input["_picture"])
+               if (Document::isImage($fullpath)
                    && Document::renameForce($fullpath, $picture_path)) {
                   Session::addMessageAfterRedirect(__('The file is valid. Upload is successful.'));
                   // For display
@@ -827,6 +801,12 @@ class User extends CommonDBTM {
          if (!in_array($input['entities_id'], Profile_User::getUserEntities($input['id']))) {
             unset($input['entities_id']);
          }
+      }
+
+      // Security on default group  update
+      if (isset($input['groups_id'])
+         && !Group_User::isUserInGroup($input['id'], $input['groups_id'])) {
+            unset($input['groups_id']);
       }
 
       if (isset($input['_reset_personal_token'])
@@ -1136,11 +1116,16 @@ class User extends CommonDBTM {
                $filename  = uniqid($this->fields['id'].'_');
                $sub       = substr($filename, -2); /* 2 hex digit */
                $file      = GLPI_PICTURE_DIR . "/$sub/${filename}.jpg";
-               $oldfile   = GLPI_PICTURE_DIR . "/".$this->fields["picture"];
+
+               if (array_key_exists('picture', $this->fields)) {
+                  $oldfile = GLPI_PICTURE_DIR . "/" . $this->fields["picture"];
+               } else {
+                  $oldfile = null;
+               }
 
                // update picture if not exist or changed
-               if (!file_exists($oldfile)
-                   || empty($this->fields["picture"])
+               if (empty($this->fields["picture"])
+                   || !file_exists($oldfile)
                    || sha1_file($oldfile) !== sha1($img)) {
                   if (!is_dir(GLPI_PICTURE_DIR . "/$sub")) {
                      mkdir(GLPI_PICTURE_DIR . "/$sub");
@@ -1535,6 +1520,7 @@ class User extends CommonDBTM {
                   case "usertitles_id" :
                   case "usercategories_id" :
                   case 'locations_id' :
+                  case 'users_id_supervisor' :
                      $this->fields[$k] = 0;
                      break;
 
@@ -1582,6 +1568,10 @@ class User extends CommonDBTM {
 
                   case "usercategories_id" :
                      $this->fields[$k] = Dropdown::importExternal('UserCategory', $val);
+                     break;
+
+                  case 'users_id_supervisor':
+                     $this->fields[$k] = self::getIdByField('user_dn', $val);
                      break;
 
                   default :
@@ -1975,8 +1965,10 @@ class User extends CommonDBTM {
 
       $this->initForm($ID, $options);
 
+      $ismyself = $ID == Session::getLoginUserID();
+      $higherrights = $this->currentUserHaveMoreRightThan($ID);
       if ($ID) {
-         $caneditpassword = $this->currentUserHaveMoreRightThan($ID);
+         $caneditpassword = $higherrights || ($ismyself && Session::haveRight('password_update', 1));
       } else {
          // can edit on creation form
          $caneditpassword = true;
@@ -1989,7 +1981,7 @@ class User extends CommonDBTM {
       $formtitle = $this->getTypeName(1);
 
       if ($ID > 0) {
-         $formtitle .= "<a class='pointer fa fa-address-card-o' target='_blank' href='".$CFG_GLPI["root_doc"].
+         $formtitle .= "<a class='pointer far fa-address-card' target='_blank' href='".$CFG_GLPI["root_doc"].
                        User::getFormURLWithID($ID)."&amp;getvcard=1' title='".__s('Download user VCard').
                        "'><span class='sr-only'>". __('Vcard')."</span></a>";
       }
@@ -2224,7 +2216,7 @@ class User extends CommonDBTM {
                            'entity'              => $_SESSION['glpiactiveentities']]);
          echo "</td></tr>";
       } else {
-         if ($caneditpassword) {
+         if ($higherrights || $ismyself) {
             $profilerand = mt_rand();
             echo "<tr class='tab_bg_1'>";
             echo "<td><label for='dropdown_profiles_id$profilerand'>" .  __('Default profile') . "</label></td><td>";
@@ -2236,13 +2228,82 @@ class User extends CommonDBTM {
                                     ['value'               => $this->fields["profiles_id"],
                                      'rand'                => $profilerand,
                                      'display_emptychoice' => true]);
-
+         }
+         if ($higherrights) {
             $entrand = mt_rand();
             echo "</td><td><label for='dropdown_entities_id$entrand'>" .  __('Default entity') . "</label></td><td>";
             $entities = $this->getEntities();
             Entity::dropdown(['value'  => $this->fields["entities_id"],
                               'rand'   => $entrand,
                               'entity' => $entities]);
+            echo "</td></tr>";
+
+            $grouprand = mt_rand();
+            echo "<tr class='tab_bg_1'>";
+            echo "<td><label for='dropdown_profiles_id$grouprand'>" .  __('Default group') . "</label></td><td>";
+
+            $options = [];
+            foreach (Group_User::getUserGroups($this->fields['id']) as $group) {
+               $options[$group['id']] = $group['completename'];
+            }
+
+            Dropdown::showFromArray("groups_id", $options,
+                                    ['value'               => $this->fields["groups_id"],
+                                     'rand'                => $grouprand,
+                                     'display_emptychoice' => true]);
+
+            echo "</td>";
+            $userrand = mt_rand();
+            echo "<td><label for='dropdown_users_id_supervisor_$userrand'>" .  __('Responsible') . "</label></td><td>";
+
+            User::dropdown(['name'   => 'users_id_supervisor',
+                            'value'  => $this->fields["users_id_supervisor"],
+                            'rand'   => $userrand,
+                            'entity' => $_SESSION["glpiactive_entity"],
+                            'right'  => 'all']);
+            echo "</td></tr>";
+         }
+
+         if ($this->can($ID, UPDATE)) {
+            echo "<tr class='tab_bg_1'><th colspan='4'>". __('Remote access keys') ."</th></tr>";
+
+            echo "<tr class='tab_bg_1'><td>";
+            echo __("Personal token");
+            echo "</td><td colspan='2'>";
+
+            if (!empty($this->fields["personal_token"])) {
+               echo "<div class='copy_to_clipboard_wrapper'>";
+               echo Html::input('_personal_token', [
+                                    'value'    => $this->fields["personal_token"],
+                                    'style'    => 'width:90%'
+                                ]);
+               echo "</div>";
+               echo "(".sprintf(__('generated on %s'),
+                                   Html::convDateTime($this->fields["personal_token_date"])).")";
+            }
+            echo "</td><td>";
+            Html::showCheckbox(['name'  => '_reset_personal_token',
+                                'title' => __('Regenerate')]);
+            echo "&nbsp;&nbsp;".__('Regenerate');
+            echo "</td></tr>";
+
+            echo "<tr class='tab_bg_1'><td>";
+            echo __("API token");
+            echo "</td><td colspan='2'>";
+            if (!empty($this->fields["api_token"])) {
+               echo "<div class='copy_to_clipboard_wrapper'>";
+               echo Html::input('_api_token', [
+                                    'value'    => $this->fields["api_token"],
+                                    'style'    => 'width:90%'
+                                ]);
+               echo "</div>";
+               echo "(".sprintf(__('generated on %s'),
+                                   Html::convDateTime($this->fields["api_token_date"])).")";
+            }
+            echo "</td><td>";
+            Html::showCheckbox(['name'  => '_reset_api_token',
+                                'title' => __('Regenerate')]);
+            echo "&nbsp;&nbsp;".__('Regenerate');
             echo "</td></tr>";
          }
 
@@ -2426,7 +2487,7 @@ class User extends CommonDBTM {
             }
             echo "</td></tr>";
          } else {
-            echo "<tr><td colspan='2'></td></tr>";
+            echo "<tr class='tab_bg_1'><td colspan='2'></td></tr>";
          }
 
          echo "<tr class='tab_bg_1'>";
@@ -2572,6 +2633,47 @@ class User extends CommonDBTM {
          } else {
             echo "<td colspan='2'>&nbsp;";
          }
+         echo "</td></tr>";
+
+         echo "<tr class='tab_bg_1'><th colspan='4'>". __('Remote access keys') ."</th></tr>";
+
+         echo "<tr class='tab_bg_1'><td>";
+         echo __("Personal token");
+         echo "</td><td colspan='2'>";
+
+         if (!empty($this->fields["personal_token"])) {
+            echo "<div class='copy_to_clipboard_wrapper'>";
+            echo Html::input('_personal_token', [
+                                 'value'    => $this->fields["personal_token"],
+                                 'style'    => 'width:90%'
+                             ]);
+            echo "</div>";
+            echo "(".sprintf(__('generated on %s'),
+                                Html::convDateTime($this->fields["personal_token_date"])).")";
+         }
+         echo "</td><td>";
+         Html::showCheckbox(['name'  => '_reset_personal_token',
+                             'title' => __('Regenerate')]);
+         echo "&nbsp;&nbsp;".__('Regenerate');
+         echo "</td></tr>";
+
+         echo "<tr class='tab_bg_1'><td>";
+         echo __("API token");
+         echo "</td><td colspan='2'>";
+         if (!empty($this->fields["api_token"])) {
+            echo "<div class='copy_to_clipboard_wrapper'>";
+            echo Html::input('_api_token', [
+                                 'value'    => $this->fields["api_token"],
+                                 'style'    => 'width:90%'
+                             ]);
+            echo "</div>";
+            echo "(".sprintf(__('generated on %s'),
+                                Html::convDateTime($this->fields["api_token_date"])).")";
+         }
+         echo "</td><td>";
+         Html::showCheckbox(['name'  => '_reset_api_token',
+                             'title' => __('Regenerate')]);
+         echo "&nbsp;&nbsp;".__('Regenerate');
          echo "</td></tr>";
 
          echo "<tr><td class='tab_bg_2 center' colspan='4'>";
@@ -3265,17 +3367,18 @@ class User extends CommonDBTM {
 
       $joinprofile      = false;
       $joinprofileright = false;
+      $WHERE = [];
 
       switch ($right) {
          case "interface" :
             $joinprofile = true;
-            $where       = " `glpi_profiles`.`interface` = 'central' ".
-                             getEntitiesRestrictRequest("AND", "glpi_profiles_users", '',
-                                                        $entity_restrict, 1);
+            $WHERE = [
+               'glpi_profiles.interface' => 'central'
+            ] + getEntitiesRestrictCriteria('glpi_profiles_users', '', $entity_restrict, 1);
             break;
 
          case "id" :
-            $where = " `glpi_users`.`id` = '".Session::getLoginUserID()."' ";
+            $WHERE = ['glpi_users.id' => Session::getLoginUserID()];
             break;
 
          case "delegate" :
@@ -3308,9 +3411,7 @@ class User extends CommonDBTM {
             }
 
             if (count($users)) {
-               $where = " `glpi_users`.`id` IN (".implode(",", $users).")";
-            } else {
-               $where = '0';
+               $WHERE = ['glpi_users.id' => $users];
             }
             break;
 
@@ -3347,16 +3448,15 @@ class User extends CommonDBTM {
             }
 
             if (count($users)) {
-               $where = " `glpi_users`.`id` IN (".implode(",", $users).")";
-            } else {
-               $where = '0';
+               $WHERE = ['glpi_users.id' => $users];
             }
 
             break;
 
          case "all" :
-            $where = " `glpi_users`.`id` > '0' ".
-                     getEntitiesRestrictRequest("AND", "glpi_profiles_users", '', $entity_restrict, 1);
+            $WHERE = [
+               'glpi_users.id' => ['>', 0]
+            ] + getEntitiesRestrictCriteria('glpi_profiles_users', '', $entity_restrict, 1);
             break;
 
          default :
@@ -3366,173 +3466,232 @@ class User extends CommonDBTM {
                $right = [$right];
             }
             $forcecentral = true;
-            $where        = [];
 
+            $ORWHERE = [];
             foreach ($right as $r) {
                switch ($r) {
                   case  'own_ticket' :
-                     $where[]= " (`glpi_profilerights`.`name` = 'ticket'
-                                  AND (`glpi_profilerights`.`rights` & ".Ticket::OWN.") ".
-                                  getEntitiesRestrictRequest("AND", "glpi_profiles_users", '',
-                                                             $entity_restrict, 1).") ";
+                     $ORWHERE[] = [
+                        [
+                           'glpi_profilerights.name'     => 'ticket',
+                           'glpi_profilerights.rights'   => ['&', Ticket::OWN]
+                        ] + getEntitiesRestrictCriteria('glpi_profiles_users', '', $entity_restrict, 1)
+                     ];
                      break;
 
                   case 'create_ticket_validate' :
-                     $where[]= " (`glpi_profilerights`.`name` = 'ticketvalidation'
-                                  AND (`glpi_profilerights`.`rights` & ".TicketValidation::CREATEREQUEST."
-                                       OR `glpi_profilerights`.`rights` & ".TicketValidation::CREATEINCIDENT.") ".
-                                  getEntitiesRestrictRequest("AND", "glpi_profiles_users", '',
-                                                             $entity_restrict, 1).") ";
+                     $ORWHERE[] = [
+                        [
+                           'glpi_profilerights.name'  => 'ticketvalidation',
+                           'OR'                       => [
+                              'glpi_profilerights.rights'   => ['&', TicketValidation::CREATEREQUEST],
+                              'glpi_profilerights.rights'   => ['&', TicketValidation::CREATEINCIDENT]
+                           ]
+                        ] + getEntitiesRestrictCriteria('glpi_profiles_users', '', $entity_restrict, 1)
+                     ];
                      $forcecentral = false;
                      break;
 
                   case 'validate_request' :
-                     $where[]= " (`glpi_profilerights`.`name` = 'ticketvalidation'
-                                  AND (`glpi_profilerights`.`rights` & ".TicketValidation::VALIDATEREQUEST.") ".
-                                   getEntitiesRestrictRequest("AND", "glpi_profiles_users", '',
-                                                              $entity_restrict, 1).") ";
+                     $ORWHERE[] = [
+                        [
+                           'glpi_profilerights.name'     => 'ticketvalidation',
+                           'glpi_profilerights.rights'   => ['&', TicketValidation::VALIDATEREQUEST]
+                        ] + getEntitiesRestrictCriteria('glpi_profiles_users', '', $entity_restrict, 1)
+                     ];
                      $forcecentral = false;
                      break;
 
                   case 'validate_incident' :
-                     $where[]= " (`glpi_profilerights`.`name` = 'ticketvalidation'
-                                  AND (`glpi_profilerights`.`rights` & ".TicketValidation::VALIDATEINCIDENT.") ".
-                                  getEntitiesRestrictRequest("AND", "glpi_profiles_users", '',
-                                                             $entity_restrict, 1).") ";
+                     $ORWHERE[] = [
+                        [
+                           'glpi_profilerights.name'     => 'ticketvalidation',
+                           'glpi_profilerights.rights'   => ['&', TicketValidation::VALIDATEINCIDENT]
+                        ] + getEntitiesRestrictCriteria('glpi_profiles_users', '', $entity_restrict, 1)
+                     ];
                      $forcecentral = false;
                      break;
 
                   case 'validate' :
-                     $where[]= " (`glpi_profilerights`.`name` = 'changevalidation'
-                                  AND (`glpi_profilerights`.`rights` & ".ChangeValidation::VALIDATE.") ".
-                                   getEntitiesRestrictRequest("AND", "glpi_profiles_users", '',
-                                                              $entity_restrict, 1).") ";
+                     $ORWHERE[] = [
+                        [
+                           'glpi_profilerights.name'     => 'changevalidation',
+                           'glpi_profilerights.rights'   => ['&', ChangeValidation::VALIDATE]
+                        ] + getEntitiesRestrictCriteria('glpi_profiles_users', '', $entity_restrict, 1)
+                     ];
                      break;
 
                   case 'create_validate' :
-                     $where[]= " (`glpi_profilerights`.`name` = 'changevalidation'
-                                  AND (`glpi_profilerights`.`rights` & ".ChangeValidation::CREATE.") ".
-                                   getEntitiesRestrictRequest("AND", "glpi_profiles_users", '',
-                                                              $entity_restrict, 1).") ";
+                     $ORWHERE[] = [
+                        [
+                           'glpi_profilerights.name'     => 'changevalidation',
+                           'glpi_profilerights.rights'   => ['&', ChangeValidation::CREATE]
+                        ] + getEntitiesRestrictCriteria('glpi_profiles_users', '', $entity_restrict, 1)
+                     ];
                      break;
 
                   case 'see_project' :
-                     $where[]= " (`glpi_profilerights`.`name` = 'project'
-                                  AND (`glpi_profilerights`.`rights` & ".Project::READMY.") ".
-                                  getEntitiesRestrictRequest("AND", "glpi_profiles_users", '',
-                                                             $entity_restrict, 1).") ";
+                     $ORWHERE[] = [
+                        [
+                           'glpi_profilerights.name'     => 'project',
+                           'glpi_profilerights.rights'   => ['&', Project::READMY]
+                        ] + getEntitiesRestrictCriteria('glpi_profiles_users', '', $entity_restrict, 1)
+                     ];
                      break;
 
                   case 'faq' :
-                     $where[]= " (`glpi_profilerights`.`name` = 'knowbase'
-                                  AND (`glpi_profilerights`.`rights` & ".KnowbaseItem::READFAQ.") ".
-                                  getEntitiesRestrictRequest("AND", "glpi_profiles_users", '',
-                                                             $entity_restrict, 1).") ";
+                     $ORWHERE[] = [
+                        [
+                           'glpi_profilerights.name'     => 'knowbase',
+                           'glpi_profilerights.rights'   => ['&', KnowbaseItem::READFAQ]
+                        ] + getEntitiesRestrictCriteria('glpi_profiles_users', '', $entity_restrict, 1)
+                     ];
 
                   default :
                      // Check read or active for rights
-                     $where[]= " (`glpi_profilerights`.`name` = '".$r."'
-                                  AND `glpi_profilerights`.`rights` & ".
-                                       (READ | CREATE | UPDATE | DELETE | PURGE) ." ".
-                                  getEntitiesRestrictRequest("AND", "glpi_profiles_users", '',
-                                                             $entity_restrict, 1).") ";
+                     $ORWHERE[] = [
+                        [
+                           'glpi_profilerights.name'     => $r,
+                           'glpi_profilerights.rights'   => [
+                              '&',
+                              READ | CREATE | UPDATE | DELETE | PURGE
+                           ]
+                        ] + getEntitiesRestrictCriteria('glpi_profiles_users', '', $entity_restrict, 1)
+                     ];
                }
                if (in_array($r, Profile::$helpdesk_rights)) {
                   $forcecentral = false;
                }
             }
 
-            $where = '('.implode(' OR ', $where);
+            if (count($ORWHERE)) {
+               $WHERE[] = ['OR' => $ORWHERE];
+            }
 
             if ($forcecentral) {
-               $where .= " AND `glpi_profiles`.`interface` = 'central' ";
+               $WHERE['glpi_profiles.interface'] = 'central';
             }
-            $where .= ')';
       }
 
       if (!$inactive_deleted) {
-         $where .= " AND `glpi_users`.`is_deleted` = 0
-                     AND `glpi_users`.`is_active` = 1
-                     AND (`glpi_users`.`begin_date` IS NULL
-                          OR `glpi_users`.`begin_date` < NOW())
-                     AND (`glpi_users`.`end_date` IS NULL
-                          OR `glpi_users`.`end_date` > NOW())";
+         $WHERE = array_merge(
+            $WHERE, [
+               'glpi_users.is_deleted' => 0,
+               'glpi_users.is_active'  => 1,
+               [
+                  'OR' => [
+                     ['glpi_users.begin_date' => null],
+                     ['glpi_users.begin_date' => ['<', new QueryExpression('NOW()')]]
+                  ]
+               ],
+               [
+                  'OR' => [
+                     ['glpi_users.end_date' => null],
+                     ['glpi_users.end_date' => ['>', new QueryExpression('NOW()')]]
+                  ]
+               ]
+
+            ]
+         );
       }
 
       if ((is_numeric($value) && $value)
           || count($used)) {
 
-         $where .= " AND `glpi_users`.`id` NOT IN (";
-         if (is_numeric($value)) {
-            $first  = false;
-            $where .= $value;
-         } else {
-            $first = true;
-         }
-         foreach ($used as $val) {
-            if ($first) {
-               $first = false;
-            } else {
-               $where .= ",";
-            }
-            $where .= $val;
-         }
-         $where .= ")";
+         $WHERE[] = [
+            'NOT' => [
+               'glpi_users.id' => $used
+            ]
+         ];
       }
 
+      $criteria = [
+         'FROM'            => 'glpi_users',
+         'LEFT JOIN'       => [
+            'glpi_useremails'       => [
+               'ON' => [
+                  'glpi_useremails' => 'users_id',
+                  'glpi_users'      => 'id'
+               ]
+            ],
+            'glpi_profiles_users'   => [
+               'ON' => [
+                  'glpi_profiles_users'   => 'users_id',
+                  'glpi_users'            => 'id'
+               ]
+            ]
+         ]
+      ];
       if ($count) {
-         $query = "SELECT COUNT(DISTINCT `glpi_users`.`id` ) AS CPT
-                   FROM `glpi_users` ";
+         $criteria['SELECT'] = ['COUNT DISTINCT' => 'glpi_users.id AS CPT'];
       } else {
-         $query = "SELECT DISTINCT `glpi_users`.*
-                   FROM `glpi_users` ";
+         $criteria['SELECT DISTINCT'] = 'glpi_users.*';
       }
-
-      $query .= " LEFT JOIN `glpi_useremails`
-                     ON (`glpi_users`.`id` = `glpi_useremails`.`users_id`)
-                  LEFT JOIN `glpi_profiles_users`
-                     ON (`glpi_users`.`id` = `glpi_profiles_users`.`users_id`)";
 
       if ($joinprofile) {
-         $query .= " LEFT JOIN `glpi_profiles`
-                        ON (`glpi_profiles`.`id` = `glpi_profiles_users`.`profiles_id`)";
+         $criteria['LEFT JOIN']['glpi_profiles'] = [
+            'ON' => [
+               'glpi_profiles_users'   => 'profiles_id',
+               'glpi_profiles'         => 'id'
+            ]
+         ];
          if ($joinprofileright) {
-            $query .= " LEFT JOIN `glpi_profilerights`
-                           ON (`glpi_profiles`.`id` = `glpi_profilerights`.`profiles_id`)";
+            $criteria['LEFT JOIN']['glpi_profilerights'] = [
+               'ON' => [
+                  'glpi_profilerights' => 'profiles_id',
+                  'glpi_profiles'      => 'id'
+               ]
+            ];
          }
       }
 
-      if ($count) {
-         $query .= " WHERE $where ";
-      } else {
+      if (!$count) {
          if ((strlen($search) > 0)) {
-            $where .= " AND (`glpi_users`.`name` ".Search::makeTextSearch($search)."
-                             OR `glpi_users`.`realname` ".Search::makeTextSearch($search)."
-                             OR `glpi_users`.`firstname` ".Search::makeTextSearch($search)."
-                             OR `glpi_users`.`phone` ".Search::makeTextSearch($search)."
-                             OR `glpi_useremails`.`email` ".Search::makeTextSearch($search)."
-                             OR CONCAT(`glpi_users`.`realname`,' ',
-                                       `glpi_users`.`firstname`,' ',
-                                       `glpi_users`.`firstname`) ".
-                                       Search::makeTextSearch($search).")";
+            $txt_search = Search::makeTextSearchValue($search);
+
+            $firstname_field = $DB->quoteName(self::getTableField('firstname'));
+            $realname_field = $DB->quoteName(self::getTableField('realname'));
+            $fields = $_SESSION["glpinames_format"] == self::FIRSTNAME_BEFORE
+               ? [$firstname_field, $realname_field]
+               : [$realname_field, $firstname_field];
+
+            $concat = new \QueryExpression(
+               'CONCAT(' . implode(',' . $DB->quoteValue(' ') . ',', $fields) . ')'
+               . ' LIKE ' . $DB->quoteValue($txt_search)
+            );
+            $WHERE[] = [
+               'OR' => [
+                  'glpi_users.name'       => ['LIKE', $txt_search],
+                  'glpi_users.realname'   => ['LIKE', $txt_search],
+                  'glpi_users.firstname'  => ['LIKE', $txt_search],
+                  'glpi_users.phone'      => ['LIKE', $txt_search],
+                  'glpi_useremails.email' => ['LIKE', $txt_search],
+                  $concat
+               ]
+            ];
          }
-         $query .= " WHERE $where ";
 
          if ($_SESSION["glpinames_format"] == self::FIRSTNAME_BEFORE) {
-            $query.=" ORDER BY `glpi_users`.`firstname`,
-                               `glpi_users`.`realname`,
-                               `glpi_users`.`name` ";
+            $criteria['ORDERBY'] = [
+               'glpi_users.firstname',
+               'glpi_users.realname',
+               'glpi_users.name'
+            ];
          } else {
-            $query.=" ORDER BY `glpi_users`.`realname`,
-                               `glpi_users`.`firstname`,
-                               `glpi_users`.`name` ";
+            $criteria['ORDERBY'] = [
+               'glpi_users.realname',
+               'glpi_users.firstname',
+               'glpi_users.name'
+            ];
          }
 
          if ($limit > 0) {
-            $query .= " LIMIT $start,$limit";
+            $criteria['LIMIT'] = $limit;
+            $criteria['START'] = $start;
          }
       }
-      return $DB->query($query);
+      $criteria['WHERE'] = $WHERE;
+      return $DB->request($criteria);
    }
 
 
@@ -4144,30 +4303,30 @@ class User extends CommonDBTM {
       switch ($CFG_GLPI['user_deleted_ldap']) {
          //DO nothing
          default :
-         case 0 :
+         case AuthLDAP::DELETED_USER_PRESERVE:
             $myuser->update($tmp);
             break;
 
          //Put user in trashbin
-         case 1 :
+         case AuthLDAP::DELETED_USER_DELETE:
             $myuser->delete($tmp);
             break;
 
          //Delete all user dynamic habilitations and groups
-         case 2 :
+         case AuthLDAP::DELETED_USER_WITHDRAWDYNINFO:
             Profile_User::deleteRights($users_id, true);
             Group_User::deleteGroups($users_id, true);
             $myuser->update($tmp);
             break;
 
          //Deactivate the user
-         case 3 :
+         case AuthLDAP::DELETED_USER_DISABLE:
             $tmp['is_active'] = 0;
             $myuser->update($tmp);
             break;
 
          //Deactivate the user+ Delete all user dynamic habilitations and groups
-         case 4:
+         case AuthLDAP::DELETED_USER_DISABLEANDWITHDRAWDYNINFO:
             $tmp['is_active'] = 0;
             $myuser->update($tmp);
             Profile_User::deleteRights($users_id, true);
@@ -4233,15 +4392,16 @@ class User extends CommonDBTM {
 
       // Verif token.
       $token_ok = false;
-      $query = "SELECT *
-                FROM `glpi_users`
-                WHERE `password_forget_token` = '$token'
-                      AND NOW() < ADDDATE(`password_forget_token_date`, INTERVAL 1 DAY)";
+      $iterator = $DB->request([
+         'FROM'   => self::getTable(),
+         'WHERE'  => [
+            'password_forget_token'       => $token,
+            new \QueryExpression('NOW() < ADDDATE(' . $DB->quoteName('password_forget_token_date') . ', INTERVAL 1 DAY)')
+         ]
+      ]);
 
-      if ($result = $DB->query($query)) {
-         if ($DB->numrows($result) == 1) {
-            $token_ok = true;
-         }
+      if (count($iterator) == 1) {
+         $token_ok = true;
       }
       echo "<div class='center'>";
 
@@ -4355,7 +4515,7 @@ class User extends CommonDBTM {
                }
                $input2 = [
                   'password_forget_token'      => '',
-                  'password_forget_token_date' => null,
+                  'password_forget_token_date' => 'NULL',
                   'id'                         => $this->fields['id']
                ];
                $this->update($input2);
@@ -4582,18 +4742,6 @@ class User extends CommonDBTM {
 
    }
 
-   /**
-   * Get personal token checking that it is unique
-   *
-   * @deprecated 9.2 @see User::getUniqueToken()
-   *
-   * @return string personal token
-    */
-   static function getUniquePersonalToken() {
-      Toolbox::deprecated('getUniquePersonalToken() method is deprecated');
-      return self::getUniqueToken('personal_token');
-   }
-
 
    /**
     * Get token of a user. If not exists generate it.
@@ -4607,32 +4755,62 @@ class User extends CommonDBTM {
 
       $user = new self();
       if ($user->getFromDB($ID)) {
-         if (!empty($user->fields[$field])) {
-            return $user->fields[$field];
-         }
-         $token = self::getUniqueToken($field);
-         $user->update(['id'             => $user->getID(),
-                             $field           => $token,
-                             $field . "_date" => $_SESSION['glpi_currenttime']]);
-         return $user->fields[$field];
+         return $user->getAuthToken($field);
       }
 
       return false;
    }
 
    /**
-    * Get personal token of a user. If not exists generate it.
+    * Get token of a user. If it does not exists  then generate it.
     *
-    * @param $ID user ID
-   *
-   * @deprecated 9.2 @see User::getToken()
+    * @since 9.4
     *
-    * @return string personal token
+    * @param string $field the field storing the token
+    * @param boolean $force_new force generation of a new token
+    *
+    * @return string|false token or false in case of error
     */
-   static function getPersonalToken($ID) {
-      Toolbox::deprecated('getPersonalToken() method is deprecated');
-      return self::getToken($ID, 'personal_token');
+   public function getAuthToken($field = 'personal_token', $force_new = false) {
+      global $CFG_GLPI;
+
+      if ($this->isNewItem()) {
+         return false;
+      }
+
+      // check date validity for cookie token
+      $outdated = false;
+      if ($field === 'cookie_token') {
+         $date_create = new DateTime($this->fields[$field."_date"]);
+         $date_expir  = $date_create->add(new DateInterval('PT'.$CFG_GLPI["login_remember_time"].'S'));
+
+         if ($date_expir < new DateTime()) {
+            $outdated = true;
+         }
+      }
+
+      // token exists, is not oudated, and we may use it
+      if (!empty($this->fields[$field]) && !$force_new && !$outdated) {
+         return $this->fields[$field];
+      }
+
+      // else get a new token
+      $token = self::getUniqueToken($field);
+
+      // for cookie token, we need to store it hashed
+      $hash = $token;
+      if ($field === 'cookie_token') {
+         $hash = Auth::getPasswordHash($token);
+      }
+
+      // save this token in db
+      $this->update(['id'             => $this->getID(),
+                     $field           => $hash,
+                     $field . "_date" => $_SESSION['glpi_currenttime']]);
+
+      return $token;
    }
+
 
    /**
     * Get name of users using default passwords
@@ -4721,7 +4899,7 @@ class User extends CommonDBTM {
       if (!empty($picture)) {
          // unlink main file
          if (file_exists(GLPI_PICTURE_DIR."/$picture")) {
-            @unlink(GLPI_DOC_DIR."/_pictures/$picture");
+            @unlink(GLPI_PICTURE_DIR."/$picture");
          }
          // unlink Thunmnail
          $tmp = explode(".", $picture);

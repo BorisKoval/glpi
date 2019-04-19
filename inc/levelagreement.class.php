@@ -79,12 +79,12 @@ abstract class LevelAgreement extends CommonDBChild {
       switch ($subtype) {
          case SLM::TTO:
             $dateField = static::$prefixticket.'time_to_own';
-            $laField   = static::$prefix.'s_tto_id';
+            $laField   = static::$prefix.'s_id_tto';
             break;
 
          case SLM::TTR:
             $dateField = static::$prefixticket.'time_to_resolve';
-            $laField   = static::$prefix.'s_ttr_id';
+            $laField   = static::$prefix.'s_id_ttr';
             break;
       }
       return [$dateField, $laField];
@@ -263,7 +263,7 @@ abstract class LevelAgreement extends CommonDBChild {
             echo "</td>";
             echo "<td>";
             echo $tt->getBeginHiddenFieldText($laField);
-            echo "<i class='fa fa-clock-o slt'></i>";
+            echo "<i class='far fa-clock slt'></i>";
             echo Dropdown::getDropdownName(static::getTable(),
                                            $ticket->fields[$laField])."&nbsp;";
             echo Html::hidden($laField, ['value' => $ticket->fields[$laField]]);
@@ -330,8 +330,9 @@ abstract class LevelAgreement extends CommonDBChild {
             }
             echo "</span>";
             echo $tt->getEndHiddenFieldValue($dateField, $ticket);
-            $sql_entities = getEntitiesRestrictRequest("", "", "", $ticket->fields['entities_id'], true);
-            $data     = $this->find("`type` = '$type' AND $sql_entities");
+            $data     = $this->find(
+               ['type' => $type] + getEntitiesRestrictCriteria('', '', $ticket->fields['entities_id'], true)
+            );
             if ($canupdate
                 && !empty($data)) {
                echo $tt->getBeginHiddenFieldText($laField);
@@ -339,14 +340,16 @@ abstract class LevelAgreement extends CommonDBChild {
                echo "<a ".Html::addConfirmationOnAction($this->getAddConfirmation(),
                         "cleanhide('la_action$type$rand');cleandisplay('la_choice$type$rand');").
                     " class='pointer' title='".static::getTypeName()."'>
-                    <i class='fa fa-clock-o slt'></i></a>";
+                    <i class='far fa-clock slt'></i></a>";
                echo "</span>";
                echo "<span id='la_choice$type$rand' style='display:none' class='assign_la'>";
-               echo "<i class='fa fa-clock-o slt'></i>";
+               echo "<i class='far fa-clock slt'></i>";
                echo "<span class='b'>".static::getTypeName()."</span>&nbsp;";
-               static::dropdown(['name'      => $laField,
-                                 'entity'    => $ticket->fields["entities_id"],
-                                 'condition' => "`type` = '".$type."'"]);
+               static::dropdown([
+                  'name'      => $laField,
+                  'entity'    => $ticket->fields["entities_id"],
+                  'condition' => ['type' => $type]
+               ]);
                echo "</span>";
                echo $tt->getEndHiddenFieldText($laField);
             }
@@ -363,8 +366,9 @@ abstract class LevelAgreement extends CommonDBChild {
                                               'required'   => $tt->isMandatoryField($dateField)]);
          echo $tt->getEndHiddenFieldValue($dateField, $ticket);
          echo "</td>";
-         $sql_entities = getEntitiesRestrictRequest("", "", "", $ticket->fields['entities_id'], true);
-         $data         = $this->find("`type` = '$type' AND $sql_entities");
+         $data     = $this->find(
+            ['type' => $type] + getEntitiesRestrictCriteria('', '', $ticket->fields['entities_id'], true)
+         );
          if ($canupdate
              && !empty($data)) {
             echo $tt->getBeginHiddenFieldText($laField);
@@ -375,11 +379,12 @@ abstract class LevelAgreement extends CommonDBChild {
             }
             echo $tt->getEndHiddenFieldText($laField);
             echo "<td class='nopadding'>".$tt->getBeginHiddenFieldValue($laField);
-            static::dropdown(['name'      => $laField,
-                              'entity'    => $ticket->fields["entities_id"],
-                              'value'     => isset($ticket->fields[$laField])
-                                                ? $ticket->fields[$laField] : 0,
-                              'condition' => "`type` = '".$type."'"]);
+            static::dropdown([
+               'name'      => $laField,
+               'entity'    => $ticket->fields["entities_id"],
+               'value'     => isset($ticket->fields[$laField]) ? $ticket->fields[$laField] : 0,
+               'condition' => ['type' => $type]
+            ]);
             echo $tt->getEndHiddenFieldValue($laField, $ticket);
             echo "</td>";
          }
@@ -428,7 +433,7 @@ abstract class LevelAgreement extends CommonDBChild {
       }
 
       // list
-      $laList = $la->find("`slms_id` = '".$instID."'");
+      $laList = $la->find(['slms_id' => $instID]);
       Session::initNavigateListItems(__CLASS__,
                                      sprintf(__('%1$s = %2$s'),
                                              $slm::getTypeName(1),
@@ -1002,8 +1007,8 @@ abstract class LevelAgreement extends CommonDBChild {
 
       $pre = static::$prefix;
 
-      if (!$levels_id && isset($ticket->fields['ttr_'.$pre.'levels_id'])) {
-         $levels_id = $ticket->fields["ttr_".$pre."levels_id"];
+      if (!$levels_id && isset($ticket->fields[$pre.'levels_id_ttr'])) {
+         $levels_id = $ticket->fields[$pre."levels_id_ttr"];
       }
 
       if ($levels_id) {
@@ -1031,7 +1036,7 @@ abstract class LevelAgreement extends CommonDBChild {
    static function deleteLevelsToDo(Ticket $ticket) {
       global $DB;
 
-      $ticketfield = "ttr_".static::$prefix."levels_id";
+      $ticketfield = static::$prefix."levels_id_ttr";
 
       if ($ticket->fields[$ticketfield] > 0) {
          $levelticket = new static::$levelticketclass();
@@ -1057,16 +1062,16 @@ abstract class LevelAgreement extends CommonDBChild {
 
       // Update tickets : clean SLA/OLA
       list($dateField, $laField) = static::getFieldNames($this->fields['type']);
-      $query = "SELECT `id`
-                FROM `glpi_tickets`
-                WHERE `$laField` = '".$this->fields['id']."'";
+      $iterator =  $DB->request([
+         'SELECT' => 'id',
+         'FROM'   => 'glpi_tickets',
+         'WHERE'  => [$laField => $this->fields['id']]
+      ]);
 
-      if ($result = $DB->query($query)) {
-         if ($DB->numrows($result) > 0) {
-            $ticket = new Ticket();
-            while ($data = $DB->fetch_assoc($result)) {
-               $ticket->deleteLevelAgreement($classname, $data['id'], $this->fields['type']);
-            }
+      if (count($iterator)) {
+         $ticket = new Ticket();
+         while ($data = $iterator->next()) {
+            $ticket->deleteLevelAgreement($classname, $data['id'], $this->fields['type']);
          }
       }
 

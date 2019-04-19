@@ -41,8 +41,8 @@ if (!defined('GLPI_ROOT')) {
  */
 class Auth extends CommonGLPI {
 
-   //! Error string
-   public $err ='';
+   //Errors
+   private $errors = [];
    /** User class variable
     * @see User
     */
@@ -138,7 +138,7 @@ class Auth extends CommonGLPI {
       global $DB;
 
       $result = $DB->request('glpi_users',
-         ['AND'      => [$options],
+         ['WHERE'    => $options,
          'LEFT JOIN' => ['glpi_useremails' => ['FKEY' => ['glpi_users'      => 'id',
                                                           'glpi_useremails' => 'users_id']]]]);
       // Check if there is a row
@@ -276,14 +276,14 @@ class Auth extends CommonGLPI {
          $ok = password_verify($pass, $hash);
 
       } else if (strlen($hash)==32) {
-         $ok = md5($pass) == $hash;
+         $ok = md5($pass) === $hash;
 
       } else if (strlen($hash)==40) {
-         $ok = sha1($pass) == $hash;
+         $ok = sha1($pass) === $hash;
 
       } else {
          $salt = substr($hash, 0, 8);
-         $ok = ($salt.sha1($salt.$pass) == $hash);
+         $ok = ($salt.sha1($salt.$pass) === $hash);
       }
 
       return $ok;
@@ -386,7 +386,7 @@ class Auth extends CommonGLPI {
                return false;
             }
 
-            phpCAS::client(CAS_VERSION_2_0, $CFG_GLPI["cas_host"], intval($CFG_GLPI["cas_port"]),
+            phpCAS::client(constant($CFG_GLPI["cas_version"]), $CFG_GLPI["cas_host"], intval($CFG_GLPI["cas_port"]),
                            $CFG_GLPI["cas_uri"], false);
 
             // no SSL validation for the CAS server
@@ -395,6 +395,12 @@ class Auth extends CommonGLPI {
             // force CAS authentication
             phpCAS::forceAuthentication();
             $this->user->fields['name'] = phpCAS::getUser();
+
+            // extract e-mail information
+            if (phpCAS::hasAttribute("mail")) {
+                $this->user->fields['_useremails'] = [phpCAS::getAttribute("mail")];
+            }
+
             return true;
 
          case self::EXTERNAL :
@@ -500,11 +506,11 @@ class Auth extends CommonGLPI {
                if (count($data) === 2) {
                   list ($cookie_id, $cookie_token) = $data;
 
-                  $token = User::getToken($cookie_id, 'personal_token');
+                  $user = new User();
+                  $user->getFromDB($cookie_id);
+                  $hash = $user->getAuthToken('cookie_token');
 
-                  if ($token !== false && Auth::checkPassword($token, $cookie_token)) {
-                     $user = new User();
-                     $user->getFromDB($cookie_id); //true if $token is not false
+                  if (Auth::checkPassword($cookie_token, $hash)) {
                      $this->user->fields['name'] = $user->fields['name'];
                      return true;
                   } else {
@@ -529,7 +535,18 @@ class Auth extends CommonGLPI {
     * @return string current identification error
     */
    function getErr() {
-      return $this->err;
+      return implode("<br>\n", $this->getErrors());
+   }
+
+   /**
+    * Get errors
+    *
+    * @since 9.4
+    *
+    * @return array
+    */
+   public function getErrors() {
+      return $this->errors;
    }
 
    /**
@@ -564,9 +581,8 @@ class Auth extends CommonGLPI {
     * @return void
     */
    function addToError($message) {
-
-      if (!strstr($this->err, $message)) {
-         $this->err .= $message."<br>\n";
+      if (!in_array($message, $this->errors)) {
+         $this->errors[] = $message;
       }
    }
 
@@ -620,6 +636,10 @@ class Auth extends CommonGLPI {
             $this->user_present                = $this->user->getFromDBbyName(addslashes($login_name));
             $this->extauth                     = 1;
             $user_dn                           = false;
+
+            if (array_key_exists('_useremails', $this->user->fields)) {
+                $email = $this->user->fields['_useremails'];
+            }
 
             $ldapservers = [];
             //if LDAP enabled too, get user's infos from LDAP
@@ -715,10 +735,7 @@ class Auth extends CommonGLPI {
       if (!$this->auth_succeded) {
          if (empty($login_name) || strstr($login_name, "\0")
              || empty($login_password) || strstr($login_password, "\0")) {
-            // only if we don't have previous errors
-            if (strlen($this->err) == 0) {
-               $this->addToError(__('Empty login or password'));
-            }
+            $this->addToError(__('Empty login or password'));
          } else {
 
             // Try connect local user if not yet authenticated
@@ -795,6 +812,10 @@ class Auth extends CommonGLPI {
                // Then ensure addslashes
                $input = Toolbox::addslashes_deep($input);
 
+               // Add the user e-mail if present
+               if (isset($email)) {
+                   $this->user->fields['_useremails'] = $email;
+               }
                $this->user->update($input);
             } else if ($CFG_GLPI["is_users_auto_add"]) {
                // Auto add user
@@ -848,12 +869,7 @@ class Auth extends CommonGLPI {
       }
 
       if ($this->auth_succeded && $CFG_GLPI['login_remember_time'] > 0 && $remember_me) {
-         $token = false;
-         if (!empty($this->user->fields['personal_token'])) {
-            $token = $this->user->fields['personal_token'];
-         } else {
-            $token = User::getToken($this->user->fields['id'], 'personal_token');
-         }
+         $token = $this->user->getAuthToken('cookie_token', true);
 
          if ($token) {
             //Cookie name (Allow multiple GLPI)
@@ -861,11 +877,9 @@ class Auth extends CommonGLPI {
             //Cookie session path
             $cookie_path = ini_get('session.cookie_path');
 
-            $hash = Auth::getPasswordHash($token);
-
             $data = json_encode([
                 $this->user->fields['id'],
-                $hash,
+                $token,
             ]);
 
             //Send cookie to browser
@@ -933,6 +947,19 @@ class Auth extends CommonGLPI {
       }
 
       return Dropdown::showFromArray($p['name'], $methods, $p);
+   }
+
+   /**
+   * Builds CAS versions dropdown
+   * @param string $value (default 'CAS_VERSION_2_0')
+   *
+   * @return string
+   */
+   static function dropdownCasVersion($value = 'CAS_VERSION_2_0') {
+      $options['CAS_VERSION_1_0'] = __('Version 1');
+      $options['CAS_VERSION_2_0'] = __('Version 2');
+      $options['CAS_VERSION_3_0'] = __('Version 3+');
+      return Dropdown::showFromArray('cas_version', $options, ['value' => $value]);
    }
 
    /**
@@ -1141,6 +1168,11 @@ class Auth extends CommonGLPI {
          }
       }
 
+      // using user token for api login
+      if (!empty($_REQUEST['user_token'])) {
+         return self::API;
+      }
+
       // Using CAS server
       if (!empty($CFG_GLPI["cas_host"])) {
          if ($redirect) {
@@ -1148,11 +1180,6 @@ class Auth extends CommonGLPI {
          } else {
             return self::CAS;
          }
-      }
-
-      // using user token for api login
-      if (!empty($_REQUEST['user_token'])) {
-         return self::API;
       }
 
       $cookie_name = session_name() . '_rememberme';
@@ -1341,6 +1368,12 @@ class Auth extends CommonGLPI {
          //TRANS: for CAS SSO system
          echo "<tr class='tab_bg_2'><td class='center'>" . __('CAS Host') . "</td>";
          echo "<td><input type='text' name='cas_host' value=\"".$CFG_GLPI["cas_host"]."\"></td></tr>\n";
+         //TRANS: for CAS SSO system
+         echo "<tr class='tab_bg_2'><td class='center'>" . __('CAS Version') . "</td>";
+         echo "<td>";
+         Auth::dropdownCasVersion($CFG_GLPI["cas_version"]);
+         echo "</td>";
+         echo "</tr>\n";
          //TRANS: for CAS SSO system
          echo "<tr class='tab_bg_2'><td class='center'>" . __('Port') . "</td>";
          echo "<td><input type='text' name='cas_port' value=\"".$CFG_GLPI["cas_port"]."\"></td></tr>\n";

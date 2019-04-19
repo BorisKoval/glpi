@@ -83,15 +83,21 @@ if (!file_exists(GLPI_CONFIG_DIR . "/config_db.php")) {
    echo "<meta name='viewport' content='width=device-width, initial-scale=1'/>";
 
    // Appel CSS
-   echo '<link rel="stylesheet" href="'.$CFG_GLPI["root_doc"].'/css/styles.css" type="text/css" '.
-         'media="screen" />';
-   // CSS theme link
-   echo Html::css("css/palettes/".$CFG_GLPI["palette"].".css");
+   echo Html::scss('main_styles');
    // font awesome icons
-   echo Html::css('lib/font-awesome-4.7.0/css/font-awesome.min.css');
+   echo Html::css('lib/font-awesome/css/all.css');
 
-   echo Html::script('lib/jquery/js/jquery-1.10.2.js');
+   // CFG
+   echo Html::scriptBlock("
+      var CFG_GLPI  = {
+         'url_base': '".(isset($CFG_GLPI['url_base']) ? $CFG_GLPI["url_base"] : '')."',
+         'root_doc': '".$CFG_GLPI["root_doc"]."',
+      };
+   ");
+
+   echo Html::script('lib/jquery/js/jquery.js');
    echo Html::script('lib/jqueryplugins/select2/js/select2.full.js');
+   echo Html::script("lib/fuzzy/fuzzy-min.js");
    echo Html::css('lib/jqueryplugins/select2/css/select2.css');
    echo Html::script('js/common.js');
 
@@ -110,19 +116,7 @@ if (!file_exists(GLPI_CONFIG_DIR . "/config_db.php")) {
    $_SESSION['namfield'] = $namfield = uniqid('fielda');
    $_SESSION['pwdfield'] = $pwdfield = uniqid('fieldb');
    $_SESSION['rmbfield'] = $rmbfield = uniqid('fieldc');
-    
-    echo "<style type=\"text/css\">
-       .Intro { 
-        background: #f8f7f3;
-        padding: 5px;
-        border: solid 1px black;
-        font-size: 150%;
-        color: red;
-       }
-       </style> ";
 
-    echo "<div class=\"Intro\" align=\"center\">При входе необходимо вводить свой логин и пароль от Windows. И выбрать из списка AD TATPROF.</div>";   
-    
    // Other CAS
    if (isset($_GET["noAUTO"])) {
       echo "<input type='hidden' name='noAUTO' value='1' />";
@@ -130,7 +124,7 @@ if (!file_exists(GLPI_CONFIG_DIR . "/config_db.php")) {
    // redirect to ticket
    if (isset($_GET["redirect"])) {
       Toolbox::manageRedirect($_GET["redirect"]);
-      echo '<input type="hidden" name="redirect" value="'.$_GET['redirect'].'"/>';
+      echo '<input type="hidden" name="redirect" value="'.Html::entities_deep($_GET['redirect']).'"/>';
    }
    echo '<p class="login_input" id="login_input_name">
          <input type="text" name="'.$namfield.'" id="login_name" required="required"
@@ -147,7 +141,7 @@ if (!file_exists(GLPI_CONFIG_DIR . "/config_db.php")) {
       Dropdown::showLanguages(
          'language', [
             'display_emptychoice'   => true,
-            'emptylabel'            => __('Lang (from user profile)'),
+            'emptylabel'            => __('Default (from user profile)'),
             'width'                 => '100%'
          ]
       );

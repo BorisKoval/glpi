@@ -1411,7 +1411,7 @@ class Rule extends CommonDBTM {
     * Process the rule
     *
     * @param &$input          the input data used to check criterias
-    * @param &$output         the initial ouput array used to be manipulate by actions
+    * @param &$output         the initial output array used to be manipulate by actions
     * @param &$params         parameters for all internal functions
     * @param &options   array options:
     *                     - only_criteria : only react on specific criteria
@@ -1449,8 +1449,8 @@ class Rule extends CommonDBTM {
     *
     * @param &options   options :
     *                     - only_criteria : only react on specific criteria
-    * @param $refoutput   the initial ouput array used to be manipulate by actions
-    * @param $newoutput   the ouput array after actions process
+    * @param $refoutput   the initial output array used to be manipulate by actions
+    * @param $newoutput   the output array after actions process
     *
     * @return the options array updated.
    **/
@@ -1701,6 +1701,9 @@ class Rule extends CommonDBTM {
       $input = $this->prepareInputDataForProcess($input, $params);
       if (isset($PLUGIN_HOOKS['use_rules'])) {
          foreach ($PLUGIN_HOOKS['use_rules'] as $plugin => $val) {
+            if (!Plugin::isPluginLoaded($plugin)) {
+               continue;
+            }
             if (is_array($val) && in_array($this->getType(), $val)) {
                $results = Plugin::doOneHook($plugin, "rulePrepareInputDataForProcess",
                                             ['input'  => $input,
@@ -1737,6 +1740,9 @@ class Rule extends CommonDBTM {
          $params['criterias_results'] = $this->criterias_results;
          $params['rule_itemtype']     = $this->getType();
          foreach ($PLUGIN_HOOKS['use_rules'] as $plugin => $val) {
+            if (!Plugin::isPluginLoaded($plugin)) {
+               continue;
+            }
             if (is_array($val) && in_array($this->getType(), $val)) {
                $results = Plugin::doOneHook($plugin, "executeActions", ['output' => $output,
                                                                         'params' => $params,
@@ -1813,7 +1819,7 @@ class Rule extends CommonDBTM {
                default:
                   //plugins actions
                   $executeaction = clone $this;
-                  $ouput = $executeaction->executePluginsActions($action, $output, $params, $input);
+                  $output = $executeaction->executePluginsActions($action, $output, $params, $input);
                   break;
             }
          }
@@ -1942,7 +1948,7 @@ class Rule extends CommonDBTM {
    function getNextRanking() {
       global $DB;
 
-      $sql = "SELECT MAX(`ranking`) AS rank
+      $sql = "SELECT MAX(`ranking`) AS `rank`
               FROM `glpi_rules`
               WHERE `sub_type` = '".$this->getType()."'";
       $result = $DB->query($sql);
@@ -2192,6 +2198,7 @@ class Rule extends CommonDBTM {
                case "dropdown_users" :
                   return getUserName($pattern);
 
+               case "dropdown_assets_itemtype" :
                case "dropdown_tracking_itemtype" :
                   if ($item = getItemForItemtype($pattern)) {
                      return $item->getTypeName(1);
@@ -2249,6 +2256,7 @@ class Rule extends CommonDBTM {
     * @param $test      Is to test rule ? (false by default)
    **/
    function displayCriteriaSelectPattern($name, $ID, $condition, $value = "", $test = false) {
+      global $CFG_GLPI;
 
       $crit    = $this->getCriteria($ID);
       $display = false;
@@ -2267,7 +2275,7 @@ class Rule extends CommonDBTM {
                break;
 
             case "yesno" :
-               Dropdown::showYesNo($name, $crit['table']);
+               Dropdown::showYesNo($name, $value);
                $display = true;
                break;
 
@@ -2294,6 +2302,16 @@ class Rule extends CommonDBTM {
                $display = true;
                break;
 
+            case "dropdown_assets_itemtype" :
+               Dropdown::showItemTypes($name, $CFG_GLPI['asset_types'], ['value' => $value]);
+               $display = true;
+               break;
+
+            case "dropdown_import_type" :
+               RuleAsset::dropdownImportType($name, $value);
+               $display = true;
+               break;
+
             case "dropdown_urgency" :
                Ticket::dropdownUrgency(['name'  => $name,
                                              'value' => $value]);
@@ -2308,7 +2326,8 @@ class Rule extends CommonDBTM {
 
             case "dropdown_priority" :
                Ticket::dropdownPriority(['name'  => $name,
-                                              'value' => $value]);
+                                              'value' => $value,
+                                              'withmajor' => true]);
                $display = true;
                break;
 
@@ -2452,6 +2471,7 @@ class Rule extends CommonDBTM {
 
                case "dropdown_priority" :
                   return Ticket::getPriorityName($value);
+
             }
          }
       }
@@ -2555,6 +2575,9 @@ class Rule extends CommonDBTM {
          $params['criterias_results'] = $this->criterias_results;
          $params['rule_itemtype']     = $this->getType();
          foreach ($PLUGIN_HOOKS['use_rules'] as $plugin => $val) {
+            if (!Plugin::isPluginLoaded($plugin)) {
+               continue;
+            }
             if (is_array($val) && in_array($this->getType(), $val)) {
                $results = Plugin::doOneHook($plugin, "preProcessRulePreviewResults",
                                             ['output' => $output,
@@ -2596,12 +2619,14 @@ class Rule extends CommonDBTM {
          return false;
       }
 
-      $add_condition = '';
+      $conditions = [
+         'sub_type' => $p['sub_type']
+      ];
       if ($p['condition'] > 0) {
-         $add_condition = ' AND `condition` & '. (int) $p['condition'];
+         $conditions['condition'] = ['&', (int)$p['condition']];
       }
 
-      $p['condition'] = "`sub_type` = '".$p['sub_type']."' $add_condition";
+      $p['condition'] = $conditions;
       return Dropdown::show($p['sub_type'], $p);
    }
 
@@ -2656,6 +2681,9 @@ class Rule extends CommonDBTM {
       $toreturn = $params;
       if (isset($PLUGIN_HOOKS['use_rules'])) {
          foreach ($PLUGIN_HOOKS['use_rules'] as $plugin => $val) {
+            if (!Plugin::isPluginLoaded($plugin)) {
+               continue;
+            }
             if (is_array($val) && in_array($itemtype, $val)) {
                $results = Plugin::doOneHook($plugin, $hook, ['rule_itemtype' => $itemtype,
                                                                   'values'        => $params]);

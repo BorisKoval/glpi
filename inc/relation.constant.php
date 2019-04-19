@@ -134,7 +134,6 @@ $RELATION = [
       '_glpi_changes_groups'    => 'changes_id',
       '_glpi_changes_items'     => 'changes_id',
       '_glpi_changes_problems'  => 'changes_id',
-      '_glpi_changes_projects'  => 'changes_id',
       '_glpi_changes_suppliers' => 'changes_id',
       '_glpi_changes_tickets'   => 'changes_id',
       '_glpi_changes_users'     => 'changes_id',
@@ -587,6 +586,7 @@ $RELATION = [
       ],
       'glpi_tasktemplates'         => 'groups_id_tech',
       'glpi_tickettasks'           => 'groups_id_tech',
+      'glpi_users'                 => 'groups_id',
    ],
 
    'glpi_holidays' => [
@@ -621,6 +621,10 @@ $RELATION = [
       'glpi_itilcategories' => 'itilcategories_id',
       'glpi_problems'       => 'itilcategories_id',
       'glpi_tickets'        => 'itilcategories_id',
+   ],
+
+   'glpi_itilfollowups' => [
+      'glpi_itilsolutions' => 'itilfollowups_id',
    ],
 
    'glpi_knowbaseitemcategories' => [
@@ -803,22 +807,23 @@ $RELATION = [
    ],
 
    'glpi_notificationtemplates' => [
-      '_glpi_notificationtemplatetranslations' => 'notificationtemplates_id',
-      '_glpi_queuednotifications'              => 'notificationtemplates_id',
+      '_glpi_notifications_notificationtemplates' => 'notificationtemplates_id',
+      '_glpi_notificationtemplatetranslations'    => 'notificationtemplates_id',
+      '_glpi_queuednotifications'                 => 'notificationtemplates_id',
    ],
 
    'glpi_olalevels' => [
       '_glpi_olalevelactions'   => 'olalevels_id',
       '_glpi_olalevelcriterias' => 'olalevels_id',
       '_glpi_olalevels_tickets' => 'olalevels_id',
-      'glpi_tickets'            => 'ttr_olalevels_id',
+      'glpi_tickets'            => 'olalevels_id_ttr',
    ],
 
    'glpi_olas' => [
       'glpi_olalevels' => 'olas_id',
       'glpi_tickets'   => [
-         'olas_ttr_id',
-         'olas_tto_id',
+         'olas_id_ttr',
+         'olas_id_tto',
       ],
    ],
 
@@ -922,7 +927,7 @@ $RELATION = [
    ],
 
    'glpi_projects' => [
-      '_glpi_changes_projects' => 'projects_id',
+      '_glpi_itils_projects'   => 'projects_id',
       '_glpi_items_projects'   => 'projects_id',
       '_glpi_projectcosts'     => 'projects_id',
       'glpi_projects'          => 'projects_id',
@@ -977,9 +982,9 @@ $RELATION = [
    ],
 
    'glpi_requesttypes' => [
-      'glpi_ticketfollowups' => 'requesttypes_id',
-      'glpi_tickets'         => 'requesttypes_id',
-      'glpi_users'           => 'default_requesttypes_id',
+      'glpi_itilfollowups' => 'requesttypes_id',
+      'glpi_tickets'       => 'requesttypes_id',
+      'glpi_users'         => 'default_requesttypes_id',
    ],
 
    'glpi_reservationitems' => [
@@ -1007,14 +1012,14 @@ $RELATION = [
       '_glpi_slalevelactions'   => 'slalevels_id',
       '_glpi_slalevelcriterias' => 'slalevels_id',
       '_glpi_slalevels_tickets' => 'slalevels_id',
-      'glpi_tickets'            => 'ttr_slalevels_id',
+      'glpi_tickets'            => 'slalevels_id_ttr',
    ],
 
    'glpi_slas' => [
       'glpi_slalevels' => 'slas_id',
       'glpi_tickets'   => [
-         'slas_ttr_id',
-         'slas_tto_id',
+         'slas_id_ttr',
+         'slas_id_tto',
       ],
    ],
 
@@ -1120,10 +1125,6 @@ $RELATION = [
       'glpi_tickettasks'  => 'tasktemplates_id',
    ],
 
-   'glpi_ticketfollowups' => [
-      'glpi_itilsolutions' => 'ticketfollowups_id',
-   ],
-
    'glpi_tickets' => [
       '_glpi_changes_tickets'      => 'tickets_id',
       'glpi_documents'             => 'tickets_id',
@@ -1135,7 +1136,6 @@ $RELATION = [
       '_glpi_slalevels_tickets'    => 'tickets_id',
       '_glpi_suppliers_tickets'    => 'tickets_id',
       '_glpi_ticketcosts'          => 'tickets_id',
-      '_glpi_ticketfollowups'      => 'tickets_id',
       '_glpi_tickets_tickets'      => [
          'tickets_id_1',
          'tickets_id_2',
@@ -1194,6 +1194,10 @@ $RELATION = [
       'glpi_enclosures'               => 'users_id_tech',
       '_glpi_groups_users'            => 'users_id',
       'glpi_itilcategories'           => 'users_id',
+      'glpi_itilfollowups'            => [
+         'users_id',
+         'users_id_editor',
+      ],
       'glpi_itilsolutions'            => [
          'users_id_approval',
          'users_id_editor',
@@ -1263,10 +1267,6 @@ $RELATION = [
          'users_id',
       ],
       'glpi_tasktemplates'            => 'users_id_tech',
-      'glpi_ticketfollowups'          => [
-         'users_id',
-         'users_id_editor',
-      ],
       'glpi_tickets'                  => [
          'users_id_recipient',
          'users_id_lastupdater',

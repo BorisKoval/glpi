@@ -360,14 +360,24 @@ class ProjectTask extends CommonDBChild {
    static function getAllTicketsForProject($ID) {
       global $DB;
 
+      $iterator = $DB->request([
+         'FROM'         => 'glpi_projecttasks_tickets',
+         'INNER JOIN'   => [
+            'glpi_projecttasks'  => [
+               'ON' => [
+                  'glpi_projecttasks_tickets'   => 'projecttasks_id',
+                  'glpi_projecttasks'           => 'id'
+               ]
+            ]
+         ],
+         'FIELDS' =>  'tickets_id',
+         'WHERE'        => [
+            'glpi_projecttasks.projects_id'   => $ID
+         ]
+      ]);
+
       $tasks = [];
-      foreach ($DB->request(['glpi_projecttasks_tickets', 'glpi_projecttasks'],
-                            ["`glpi_projecttasks`.`projects_id`"
-                                          => $ID,
-                                  "`glpi_projecttasks_tickets`.`projecttasks_id`"
-                                          => "`glpi_projecttasks`.`id`",
-                                  'FIELDS' =>  "tickets_id" ])
-                        as $data) {
+      while ($data = $iterator->next()) {
          $tasks[] = $data['tickets_id'];
       }
       return $tasks;
@@ -483,12 +493,13 @@ class ProjectTask extends CommonDBChild {
       echo "</td>";
       echo "<td>".__('As child of')."</td>";
       echo "<td>";
-      $this->dropdown(['entity'    => $this->fields['entities_id'],
-                            'value'     => $projecttasks_id,
-                            'rand'      => $rand_project,
-                            'condition' => "`glpi_projecttasks`.`projects_id`='".
-                                             $this->fields['projects_id']."'",
-                            'used'      => [$this->fields['id']]]);
+      $this->dropdown([
+         'entity'    => $this->fields['entities_id'],
+         'value'     => $projecttasks_id,
+         'rand'      => $rand_project,
+         'condition' => ['glpi_projecttasks.projects_id' => $this->fields['projects_id']],
+         'used'      => [$this->fields['id']]
+      ]);
       echo "</td></tr>";
 
       $showuserlink = 0;

@@ -44,9 +44,6 @@ abstract class CommonTreeDropdown extends CommonDropdown {
    public $can_be_translated = false;
 
 
-   /**
-    * Return Additional Fileds for this type
-   **/
    function getAdditionalFields() {
 
       return [['name'  => $this->getForeignKeyField(),
@@ -349,35 +346,6 @@ abstract class CommonTreeDropdown extends CommonDropdown {
       }
    }
 
-   /**
-    * @param $ID
-    *
-    * @deprecated 9.2 @see CommonTreeDropdown::cleanParentsSons()
-   **/
-   function recursiveCleanSonsAboveID($ID) {
-      global $DB;
-
-      Toolbox::deprecated();
-
-      if ($ID > 0) {
-         $DB->update(
-            $this->getTable(), [
-               'sons_cache' => 'NULL'
-            ], [
-               'id' => $ID
-            ]
-         );
-
-         $currentNode = clone $this;
-         if ($currentNode->getFromDB($ID)) {
-            $parentID = $currentNode->getField($this->getForeignKeyField());
-            if ($ID != $parentID) {
-               $this->recursiveCleanSonsAboveID($parentID);
-            }
-         }
-      }
-   }
-
 
    function post_addItem() {
 
@@ -495,10 +463,10 @@ abstract class CommonTreeDropdown extends CommonDropdown {
    /**
     * Print the HTML array children of a TreeDropdown
     *
-    * @return Nothing (display)
-    **/
+    * @return void
+    */
    function showChildren() {
-      global $DB, $CFG_GLPI;
+      global $DB;
 
       $ID            = $this->getID();
       $this->check($ID, READ);
@@ -611,9 +579,6 @@ abstract class CommonTreeDropdown extends CommonDropdown {
    }
 
 
-   /**
-    * @see CommonDBTM::getSpecificMassiveActions()
-   **/
    function getSpecificMassiveActions($checkitem = null) {
 
       $isadmin = static::canUpdate();
@@ -628,13 +593,7 @@ abstract class CommonTreeDropdown extends CommonDropdown {
    }
 
 
-   /**
-    * @since 0.85
-    *
-    * @see CommonDBTM::showMassiveActionsSubForm()
-   **/
    static function showMassiveActionsSubForm(MassiveAction $ma) {
-      global $CFG_GLPI;
 
       switch ($ma->getAction()) {
          case 'move_under' :
@@ -652,11 +611,7 @@ abstract class CommonTreeDropdown extends CommonDropdown {
       return parent::showMassiveActionsSubForm($ma);
    }
 
-   /**
-    * @since 0.85
-    *
-    * @see CommonDBTM::processMassiveActionsForOneItemtype()
-   **/
+
    static function processMassiveActionsForOneItemtype(MassiveAction $ma, CommonDBTM $item,
                                                        array $ids) {
 
@@ -703,11 +658,6 @@ abstract class CommonTreeDropdown extends CommonDropdown {
    }
 
 
-   /**
-    * Get search function for the class
-    *
-    * @return array of search option
-   **/
    function rawSearchOptions() {
       $tab = [];
 
@@ -811,10 +761,6 @@ abstract class CommonTreeDropdown extends CommonDropdown {
    }
 
 
-   /**
-    * Report if a dropdown have Child
-    * Used to (dis)allow delete action
-   **/
    function haveChildren() {
 
       $fk = $this->getForeignKeyField();
@@ -846,67 +792,66 @@ abstract class CommonTreeDropdown extends CommonDropdown {
    }
 
 
-   /**
-    * check if a tree dropdown already exists (before import)
-    *
-    * @param &$input array of value to import (name, ...)
-    *
-    * @return the ID of the new (or -1 if not found)
-   **/
    function findID(array &$input) {
       global $DB;
 
       if (isset($input['completename'])) {
-         // Clean datas
+         // Clean data
          $input['completename'] = self::cleanTreeText($input['completename']);
       }
 
       if (isset($input['completename']) && !empty($input['completename'])) {
-         $query = "SELECT `id`
-                   FROM `".$this->getTable()."`
-                   WHERE `completename` = '".$input['completename']."'";
+         $criteria = [
+            'SELECT' => 'id',
+            'FROM'   => $this->getTable(),
+            'WHERE'  => [
+               'completename' => $input['completename']
+            ]
+         ];
          if ($this->isEntityAssign()) {
-            $query .= getEntitiesRestrictRequest(' AND ', $this->getTable(), '',
-                                                 $input['entities_id'], $this->maybeRecursive());
+            $criteria['WHERE'] = $criteria['WHERE'] + getEntitiesRestrictCriteria(
+               $this->getTable(),
+               '',
+               $input['entities_id'],
+               $this->maybeRecursive()
+            );
          }
          // Check twin :
-         if ($result_twin = $DB->query($query)) {
-            if ($DB->numrows($result_twin) > 0) {
-               return $DB->result($result_twin, 0, "id");
-            }
+         $iterator = $DB->request($criteria);
+         if (count($iterator)) {
+            $result = $iterator->next();
+            return $result['id'];
          }
-
       } else if (isset($input['name']) && !empty($input['name'])) {
          $fk = $this->getForeignKeyField();
 
-         $query = "SELECT `id`
-                   FROM `".$this->getTable()."`
-                   WHERE `name` = '".$input["name"]."'
-                         AND `$fk` = '".(isset($input[$fk]) ? $input[$fk] : 0)."'";
-
+         $criteria = [
+            'SELECT' => 'id',
+            'FROM'   => $this->getTable(),
+            'WHERE'  => [
+               'name'   => $input['name'],
+               $fk      => (isset($input[$fk]) ? $input[$fk] : 0)
+            ]
+         ];
          if ($this->isEntityAssign()) {
-            $query .= getEntitiesRestrictRequest(' AND ', $this->getTable(), '',
-                                                 $input['entities_id'], $this->maybeRecursive());
+            $criteria['WHERE'] = $criteria['WHERE'] + getEntitiesRestrictCriteria(
+               $this->getTable(),
+               '',
+               $input['entities_id'],
+               $this->maybeRecursive()
+            );
          }
-
          // Check twin :
-         if ($result_twin = $DB->query($query)) {
-            if ($DB->numrows($result_twin) > 0) {
-               return $DB->result($result_twin, 0, "id");
-            }
+         $iterator = $DB->request($criteria);
+         if (count($iterator)) {
+            $result = $iterator->next();
+            return $result['id'];
          }
       }
       return -1;
    }
 
 
-   /**
-    * Import a dropdown - check if already exists
-    *
-    * @param $input array of value to import (name or completename, ...)
-    *
-    * @return the ID of the new or existing dropdown (0 on failure)
-   **/
    function import(array $input) {
 
       if (isset($input['name'])) {
@@ -956,5 +901,4 @@ abstract class CommonTreeDropdown extends CommonDropdown {
       }
       return $parent;
    }
-
 }

@@ -30,6 +30,14 @@
  */
 var timeoutglobalvar;
 
+if (typeof(String.prototype.normalize) !== 'function') {
+   $.ajax({
+      type: "GET",
+      url: CFG_GLPI.root_doc + "/lib/unorm/unorm.js",
+      dataType: "script",
+      cache: true
+   });
+}
 
 /**
  * modifier la propriete display d'un element
@@ -435,8 +443,9 @@ function massiveUpdateCheckbox(criterion, reference) {
     return true;
 }
 
-/* TImeline for itiobjects */
-
+/**
+ * Timeline for itiobjects
+ */
 var filter_timeline = function() {
    $(document).on("click", '.filter_timeline li a', function(event) {
       event.preventDefault();
@@ -652,7 +661,7 @@ var submitparentForm = function(input) {
       return (submit.trigger('click') !== false);
    }
 
-   return false
+   return false;
 };
 
 /**
@@ -729,24 +738,6 @@ var getSize = function (size) {
 };
 
 /**
- * Replace content in tinyMCE
- *
- * @param {Object} editor   TinyMCE editor instance
- * @param {String} search   The search
- * @param {String} replace  The replace
- */
-var replaceContent = function(editor, search, replace) {
-   if (!replace) {
-      replace = '';
-   }
-
-   var re =/\[\*\*(.*?)\*\*\]/;
-   var body = editor.getContent();
-   body = body.replace(re,replace);
-   editor.setContent(body);
-};
-
-/**
  * Convert a integer index into an excel like alpha index (A, B, ..., AA, AB, ...)
  * @since  9.3
  * @param  integer index    the numeric index
@@ -760,20 +751,6 @@ var getBijectiveIndex = function(index) {
       index /= 26;
    }
    return bij_str;
-};
-
-/**
- * Sets the cursor at the end in a tinymce editor.
- *
- * @param  {Object}  editor TinyMCE editor instance
- */
-var setCursorAtTheEnd = function(editor) {
-   var body = editor.getContent();
-   body +='<p> </p>';
-   editor.setContent(body);
-   editor.dom.add(editor.getBody(),'p');
-   editor.selection.select(editor.getBody(), true); // ed is the editor instance
-   editor.selection.collapse(false);
 };
 
 /**
@@ -855,8 +832,8 @@ var initMap = function(parent_elt, map_id, height) {
    var map = L.map(map_id, {fullscreenControl: true}).setView([43.6112422, 3.8767337], 6);
 
    //setup tiles and © messages
-   L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href=\'http://osm.org/copyright\'>OpenStreetMap</a> contributors'
+   L.tileLayer('https://{s}.tile.osm.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href=\'https://osm.org/copyright\'>OpenStreetMap</a> contributors'
    }).addTo(map);
    return map;
 };
@@ -948,32 +925,55 @@ function markMatch (text, term) {
  * Function that renders select2 results.
  */
 var templateResult = function(result) {
-   if (!result.id) {
-      return result.text;
-   }
-
    var _elt = $('<span></span>');
    _elt.attr('title', result.title);
 
-   var markup=[result.text];
-
-   var _term = query.term || '';
-   var markup = markMatch(result.text, _term);
-
-   if (result.level) {
-      var a='';
-      var i=result.level;
-      while (i>1) {
-         a = a+'&nbsp;&nbsp;&nbsp;';
-         i=i-1;
-      }
-      _elt.html(a+'&raquo;'+markup);
+   if (typeof query.term !== 'undefined' && typeof result.rendered_text !== 'undefined') {
+      _elt.html(result.rendered_text);
    } else {
-      _elt.html(markup);
+      if (!result.text) {
+         return null;
+      }
+
+      var text = result.text;
+      if (text.indexOf('>') !== -1 || text.indexOf('<') !== -1) {
+         // escape text, if it contains chevrons (can already be escaped prior to this point :/)
+         text = jQuery.fn.select2.defaults.defaults.escapeMarkup(text);
+      };
+
+      if (!result.id) {
+         // If result has no id, then it is used as an optgroup and is not used for matches
+         _elt.html(text);
+         return _elt;
+      }
+
+      var _term = query.term || '';
+      var markup = markMatch(text, _term);
+
+      if (result.level) {
+         var a='';
+         var i=result.level;
+         while (i>1) {
+            a = a+'&nbsp;&nbsp;&nbsp;';
+            i=i-1;
+         }
+         _elt.html(a+'&raquo;'+markup);
+      } else {
+         _elt.html(markup);
+      }
    }
 
    return _elt;
 };
+
+// delay function who reinit timer on each call
+var typewatch = (function(){
+   var timer = 0;
+   return function(callback, ms){
+      clearTimeout (timer);
+      timer = setTimeout(callback, ms);
+   };
+})();
 
 /**
  * Function that renders select2 selections.
@@ -990,3 +990,20 @@ var templateSelection = function (selection) {
    // Default text
    return selection.text;
 };
+
+/**
+ * Returns given text without is diacritical marks.
+ *
+ * @param {string} text
+ *
+ * @return {string}
+ */
+var getTextWithoutDiacriticalMarks = function (text) {
+   // Normalizing to NFD Unicode normal form decomposes combined graphemes
+   // into the combination of simple ones. The "è" becomes "e + ̀`".
+   text = text.normalize('NFD');
+
+   // The U+0300 -> U+036F range corresponds to diacritical chars.
+   // They are removed to keep only chars without their diacritical mark.
+   return text.replace(/[\u0300-\u036f]/g, '');
+}

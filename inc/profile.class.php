@@ -48,7 +48,7 @@ class Profile extends CommonDBTM {
                                           'reservation', 'rssfeed_public',
                                           'show_group_hardware', 'task', 'ticket',
                                           'tickettemplates_id', 'ticket_cost',
-                                          'ticketvalidation', 'ticket_status'];
+                                          'ticketvalidation', 'ticket_status','personalization'];
 
 
    /// Common fields used for all profiles type
@@ -93,6 +93,7 @@ class Profile extends CommonDBTM {
                   $ong[3] = __('Assistance'); // Helpdesk
                   $ong[4] = __('Life cycles');
                   $ong[6] = __('Tools');
+                  $ong[8] = __('Setup');
                } else {
                   $ong[2] = __('Assets');
                   $ong[3] = __('Assistance');
@@ -152,7 +153,11 @@ class Profile extends CommonDBTM {
                break;
 
             case 8 :
-               $item->showFormSetup();
+               if ($item->fields['interface'] == 'helpdesk') {
+                  $item->showFormSetupHelpdesk();
+               } else {
+                  $item->showFormSetup();
+               }
                break;
          }
       }
@@ -411,88 +416,6 @@ class Profile extends CommonDBTM {
 
 
    /**
-    * Get SQL restrict request to determine profiles with less rights than the active one
-    *
-    * @deprecated 9.3.1
-    *
-    * @param $separator string   Separator used at the beginning of the request (default 'AND')
-    *
-    * @return SQL restrict string
-   **/
-   static function getUnderActiveProfileRestrictRequest($separator = "AND") {
-      Toolboox::deprecated();
-      // I don't understand usefull of this code (yllen)
-      /*
-      if (in_array('reservation', self::$helpdesk_rights)
-          && !Session::haveRight('reservation', ReservationItem::RESERVEANITEM)) {
-         return false;
-      }
-
-      if (in_array('ticket', self::$helpdesk_rights)
-          && !Session::haveRightsOr("ticket", array(CREATE, Ticket::READGROUP))) {
-         return false;
-      }
-      if (in_array('followup', self::$helpdesk_rights)
-          && !Session::haveRightsOr('followup',
-                                    array(TicketFollowup::ADDMYTICKET, TicketFollowup::UPDATEMY,
-                                          TicketFollowup::SEEPUBLIC))) {
-         return false;
-      }
-      if (in_array('task', self::$helpdesk_rights)
-         && !Session::haveRight('task', TicketTask::SEEPUBLIC)) {
-         return false;
-      }
-      if (in_array('ticketvalidation', self::$helpdesk_rights)
-            && !Session::haveRightsOr('ticketvalidation',
-                                      array(TicketValidation::CREATEREQUEST,
-                                            TicketValidation::CREATEINCIDENT,
-                                            TicketValidation::VALIDATEREQUEST,
-                                            TicketValidation::VALIDATEINCIDENT))) {
-         return false;
-      }
-      */
-
-      $query = $separator ." ";
-
-      // Not logged -> no profile to see
-      if (!isset($_SESSION['glpiactiveprofile'])) {
-         return $query." 0 ";
-      }
-
-      // Profile right : may modify profile so can attach all profile
-      if (Profile::canCreate()) {
-         return $query." 1 ";
-      }
-
-      if (Session::getCurrentInterface() == 'central') {
-         $query .= " (`glpi_profiles`.`interface` = 'helpdesk') ";
-      }
-
-      $query .= " OR (`glpi_profiles`.`interface` = '".Session::getCurrentInterface()."' ";
-
-      // First, get all possible rights
-      $right_subqueries = [];
-      foreach (ProfileRight::getAllPossibleRights() as $key => $default) {
-         $val = isset($_SESSION['glpiactiveprofile'][$key])?$_SESSION['glpiactiveprofile'][$key]:0;
-
-         if (!is_array($val) // Do not include entities field added by login
-             && (Session::getCurrentInterface() == 'central'
-                 || in_array($key, self::$helpdesk_rights))) {
-
-            $right_subqueries[] = "(`glpi_profilerights`.`name` = '$key'
-                                   AND (`glpi_profilerights`.`rights` | $val) = $val)";
-         }
-      }
-      $query .= " AND ".count($right_subqueries)." = (
-                    SELECT count(*)
-                    FROM `glpi_profilerights`
-                    WHERE `glpi_profilerights`.`profiles_id` = `glpi_profiles`.`id`
-                     AND (".implode(' OR ', $right_subqueries).")))";
-
-      return $query;
-   }
-
-   /**
     * Get SQL restrict criteria to determine profiles with less rights than the active one
     *
     * @since 9.3.1
@@ -522,11 +445,9 @@ class Profile extends CommonDBTM {
              && (Session::getCurrentInterface() == 'central'
                  || in_array($key, self::$helpdesk_rights))) {
             $right_subqueries[] = [
-               'AND' => [
-                  'glpi_profilerights.name'     => $key,
-                  'RAW'                         => [
-                     '(' . DBmysql::quoteName('glpi_profilerights.rights') . ' | ' . DBmysql::quoteValue($val) . ')' => $val
-                  ]
+               'glpi_profilerights.name'     => $key,
+               'RAW'                         => [
+                  '(' . DBmysql::quoteName('glpi_profilerights.rights') . ' | ' . DBmysql::quoteValue($val) . ')' => $val
                ]
             ];
          }
@@ -540,13 +461,13 @@ class Profile extends CommonDBTM {
             'OR'                             => $right_subqueries
          ]
       ]);
-      $criteria[] = new \QueryExpression(count($right_subqueries)." = (".$sub_query->getSubQuery().")");
+      $criteria[] = new \QueryExpression(count($right_subqueries)." = ".$sub_query->getQuery());
 
       if (Session::getCurrentInterface() == 'central') {
          return [
             'OR'  => [
                'glpi_profiles.interface' => 'helpdesk',
-               'AND' => [$criteria]
+               $criteria
             ]
          ];
       }
@@ -610,10 +531,11 @@ class Profile extends CommonDBTM {
 
 
    function post_getEmpty() {
+      global $GLPI_CACHE;
 
       $this->fields["interface"] = "helpdesk";
       $this->fields["name"]      = __('Without name');
-      unset($_SESSION['glpi_all_possible_rights']);
+      ProfileRight::cleanAllPossibleRights();
       $this->fields = array_merge($this->fields, ProfileRight::getAllPossibleRights());
    }
 
@@ -708,7 +630,7 @@ class Profile extends CommonDBTM {
       $rights = [['rights'     => Profile::getRightsFor('Ticket', 'helpdesk'),
                             'label'      => _n('Ticket', 'Tickets', Session::getPluralNumber()),
                             'field'      => 'ticket'],
-                      ['rights'     => Profile::getRightsFor('TicketFollowup', 'helpdesk'),
+                      ['rights'     => Profile::getRightsFor('ITILFollowup', 'helpdesk'),
                             'label'      => _n('Followup', 'Followups', Session::getPluralNumber()),
                             'field'      => 'followup'],
                       ['rights'     => Profile::getRightsFor('TicketTask', 'helpdesk'),
@@ -752,7 +674,7 @@ class Profile extends CommonDBTM {
       $options = ['value'     => $this->fields["tickettemplates_id"],
                        'entity'    => 0];
       if (Session::isMultiEntitiesMode()) {
-         $options['condition'] = '`is_recursive`';
+         $options['condition'] = ['is_recursive' => 1];
       }
       // Only add profile if on root entity
       if (!isset($_SESSION['glpiactiveentities'][0])) {
@@ -1063,7 +985,7 @@ class Profile extends CommonDBTM {
       $options = ['value'     => $this->fields["tickettemplates_id"],
                        'entity'    => 0];
       if (Session::isMultiEntitiesMode()) {
-         $options['condition'] = '`is_recursive`';
+         $options['condition'] = ['is_recursive' => 1];
       }
       // Only add profile if on root entity
       if (!isset($_SESSION['glpiactiveentities'][0])) {
@@ -1093,7 +1015,7 @@ class Profile extends CommonDBTM {
       $matrix_options['title'] = _n('Ticket', 'Tickets', Session::getPluralNumber());
       $this->displayRightsChoiceMatrix($rights, $matrix_options);
 
-      $rights = [['itemtype'  => 'TicketFollowup',
+      $rights = [['itemtype'  => 'ITILFollowup',
                             'label'     => _n('Followup', 'Followups', Session::getPluralNumber()),
                             'field'     => 'followup'],
                       ['itemtype'  => 'TicketTask',
@@ -1424,6 +1346,10 @@ class Profile extends CommonDBTM {
                             'label'     => __('Business rules for tickets (entity)'),
                             'field'     => 'rule_ticket',
                             'row_class' => 'tab_bg_2'],
+                      ['itemtype'  => 'RuleAsset',
+                            'label'     => __('Business rules for assets'),
+                            'field'     => 'rule_asset',
+                            'row_class' => 'tab_bg_2'],
                       ['itemtype'  => 'Transfer',
                             'label'     => __('Transfer'),
                             'field'     => 'transfer']];
@@ -1480,6 +1406,11 @@ class Profile extends CommonDBTM {
       $rights = [['itemtype'  => 'Config',
                             'label'     => __('General setup'),
                             'field'     => 'config'],
+                      ['rights'  => [
+                         READ    => __('Read'),
+                         UPDATE  => __('Update')],
+                        'label'  => __('Personalization'),
+                        'field'  => 'personalization'],
                       ['itemtype'  => 'DisplayPreference',
                             'label'     => __('Search result display'),
                             'field'     => 'search_config'],
@@ -1551,6 +1482,53 @@ class Profile extends CommonDBTM {
    }
 
 
+   /**
+    * Print the Setup rights form for a helpdesk profile
+    *
+    * @since 9.4.0
+    *
+    * @param boolean $openform  open the form (true by default)
+    * @param boolean $closeform close the form (true by default)
+    *
+    * @return void
+    *
+   **/
+   function showFormSetupHelpdesk($openform = true, $closeform = true) {
+
+      if (!self::canView()) {
+         return false;
+      }
+
+      echo "<div class='spaced'>";
+      if (($canedit = Session::haveRightsOr(self::$rightname, [CREATE, UPDATE, PURGE]))
+          && $openform) {
+         echo "<form method='post' action='".$this->getFormURL()."'>";
+      }
+
+      $rights = [['rights'  => [
+                     READ    => __('Read'),
+                     UPDATE  => __('Update')],
+                  'label'  => __('Personalization'),
+                  'field'  => 'personalization']];
+
+      $this->displayRightsChoiceMatrix($rights, ['canedit'       => $canedit,
+                                                      'default_class' => 'tab_bg_2',
+                                                      'title'         => __('Setup')]);
+
+      if ($canedit
+          && $closeform) {
+         echo "<div class='center'>";
+         echo "<input type='hidden' name='id' value='".$this->fields['id']."'>";
+         echo "<input type='submit' name='update' value=\""._sx('button', 'Save')."\" class='submit'>";
+         echo "</div>\n";
+         Html::closeForm();
+      }
+      echo "</div>";
+
+      $this->showLegend();
+   }
+
+
    function rawSearchOptions() {
       $tab = [];
 
@@ -1566,6 +1544,15 @@ class Profile extends CommonDBTM {
          'name'               => __('Name'),
          'datatype'           => 'itemlink',
          'massiveaction'      => false
+      ];
+
+      $tab[] = [
+         'id'                 => '2',
+         'table'              => $this->getTable(),
+         'field'              => 'id',
+         'name'               => __('ID'),
+         'massiveaction'      => false,
+         'datatype'           => 'number'
       ];
 
       $tab[] = [
@@ -1587,7 +1574,7 @@ class Profile extends CommonDBTM {
       ];
 
       $tab[] = [
-         'id'                 => '2',
+         'id'                 => '5',
          'table'              => $this->getTable(),
          'field'              => 'interface',
          'name'               => __("Profile's interface"),
@@ -1980,6 +1967,21 @@ class Profile extends CommonDBTM {
          'joinparams'         => [
             'jointype'           => 'child',
             'condition'          => "AND `NEWTABLE`.`name`= 'config'"
+         ]
+      ];
+
+      $tab[] = [
+         'id'                 => '109',
+         'table'              => 'glpi_profilerights',
+         'field'              => 'rights',
+         'name'               => __('Personalization'),
+         'datatype'           => 'right',
+         'rightclass'         => 'Config',
+         'rightname'          => 'personalization',
+         'noread'             => true,
+         'joinparams'         => [
+            'jointype'           => 'child',
+            'condition'          => "AND `NEWTABLE`.`name`= 'personalization'"
          ]
       ];
 
@@ -2951,8 +2953,7 @@ class Profile extends CommonDBTM {
          $b = explode('_', $b);
 
          // For standard rights sort by right
-         if (($a[0] < 1024)
-             || ($b[0] < 1024)) {
+         if (($a[0] < 1024) || ($b[0] < 1024)) {
             if ($a[0] > $b[0]) {
                return true;
             }

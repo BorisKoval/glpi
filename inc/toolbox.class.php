@@ -556,10 +556,12 @@ class Toolbox {
       try {
          self::log(null, Logger::NOTICE, [$message]);
       } finally {
-         if (isCommandLine()) {
-            echo self::backtrace(null);
-         } else {
-            self::backtrace();
+         if (defined('TU_USER')) {
+            if (isCommandLine()) {
+               echo self::backtrace(null);
+            } else {
+               self::backtrace();
+            }
          }
       }
    }
@@ -1119,9 +1121,21 @@ class Toolbox {
          // This is not a SELinux system
          return 0;
       }
-      $mode = exec("/usr/sbin/getenforce");
-      if (empty($mode)) {
-         $mode = "Unknown";
+      if (function_exists('selinux_getenforce')) { // Use https://pecl.php.net/package/selinux
+         $mode = selinux_getenforce();
+         // Make it human readable, with same output as the command
+         if ($mode > 0) {
+            $mode = 'Enforcing';
+         } else if ($mode < 0) {
+            $mode = 'Disabled';
+         } else {
+            $mode = 'Permissive';
+         }
+      } else {
+         $mode = exec("/usr/sbin/getenforce");
+         if (empty($mode)) {
+            $mode = "Unknown";
+         }
       }
       //TRANS: %s is mode name (Permissive, Enforcing of Disabled)
       $msg  = sprintf(__('SELinux mode is %s'), $mode);
@@ -1144,17 +1158,19 @@ class Toolbox {
       // Enforcing mode will block some feature (notif, ...)
       // Permissive mode will write lot of stuff in audit.log
 
-      if (!file_exists('/usr/sbin/getenforce')) {
-         // should always be there
-         return 0;
-      }
       $bools = ['httpd_can_network_connect', 'httpd_can_network_connect_db',
                      'httpd_can_sendmail'];
       $msg2 = __s('Some features may require this to be on');
       foreach ($bools as $bool) {
-         $state = exec('/usr/sbin/getsebool '.$bool);
-         if (empty($state)) {
-            $state = "$bool --> unkwown";
+         if (function_exists('selinux_get_boolean_active')) {
+            $state = selinux_get_boolean_active($bool);
+            // Make it human readable, with same output as the command
+            $state = "$bool --> " . ($state ? 'on' : 'off');
+         } else {
+            $state = exec('/usr/sbin/getsebool '.$bool);
+            if (empty($state)) {
+               $state = "$bool --> unkwown";
+            }
          }
          //TRANS: %s is an option name
          $msg = sprintf(__('SELinux boolean configuration for %s'), $state);
@@ -1814,14 +1830,14 @@ class Toolbox {
     * @param $where string: where to redirect ?
    **/
    static function manageRedirect($where) {
-      global $CFG_GLPI, $PLUGIN_HOOKS;
+      global $CFG_GLPI;
 
       if (!empty($where)) {
 
          if (Session::getCurrentInterface()) {
             $decoded_where = rawurldecode($where);
             // redirect to URL : URL must be rawurlencoded
-            if ($link = preg_match('/(https?:\/\/[^\/]+)\/.+/', $decoded_where, $matches)) {
+            if (preg_match('@(([^:/].+:)?//[^/]+)(/.+)?@', $decoded_where, $matches)) {
                if ($matches[1] !== $CFG_GLPI['url_base']) {
                   Session::addMessageAfterRedirect('Redirection failed');
                   if (Session::getCurrentInterface() === "helpdesk") {
@@ -1866,12 +1882,11 @@ class Toolbox {
                                  }
                               }
                            }
-                           if ($_SESSION['glpiticket_timeline'] == 1) {
-                              // force redirect to timeline when timeline is enabled and viewing
-                              // Tasks or Followups
-                              $forcetab = str_replace( 'TicketFollowup$1', 'Ticket$1', $forcetab);
-                              $forcetab = str_replace( 'TicketTask$1', 'Ticket$1', $forcetab);
-                           }
+                           // force redirect to timeline when timeline is enabled and viewing
+                           // Tasks or Followups
+                           $forcetab = str_replace( 'TicketFollowup$1', 'Ticket$1', $forcetab);
+                           $forcetab = str_replace( 'TicketTask$1', 'Ticket$1', $forcetab);
+                           $forcetab = str_replace( 'ITILFollowup$1', 'Ticket$1', $forcetab);
                            Html::redirect(Ticket::getFormURLWithID($data[1])."&$forcetab");
 
                         } else if (!empty($data[0])) { // redirect to list
@@ -1926,11 +1941,10 @@ class Toolbox {
                                     }
                                  }
                               }
-                              if ($_SESSION['glpiticket_timeline'] == 1 && $item->getType() == 'Ticket') {
-                                 // force redirect to timeline when timeline is enabled
-                                 $forcetab = str_replace( 'TicketFollowup$1', 'Ticket$1', $forcetab);
-                                 $forcetab = str_replace( 'TicketTask$1', 'Ticket$1', $forcetab);
-                              }
+                              // force redirect to timeline when timeline is enabled
+                              $forcetab = str_replace( 'TicketFollowup$1', 'Ticket$1', $forcetab);
+                              $forcetab = str_replace( 'TicketTask$1', 'Ticket$1', $forcetab);
+                              $forcetab = str_replace( 'ITILFollowup$1', 'Ticket$1', $forcetab);
                               Html::redirect($item->getFormURLWithID($data[1])."&$forcetab");
                            }
 
@@ -2510,31 +2524,6 @@ class Toolbox {
 
 
    /**
-    * Check if the given object is of the type $class_name. Can be identical or a subclass.
-    * This method emulates PHP 5.3.9: is_a with allow_string == true
-    *
-    * @todo: remove when prerequisite > 5.3.9 !
-    *
-    * @since 0.85
-    * @deprecated 9.3.1
-    *
-    * @param $object        can be an object or a string contining the class name
-    * @param $class_name    the name of the class to compare
-    *
-    * @return true if $object is an instance of $class_name
-    *
-   **/
-   static function is_a($object, $class_name) {
-      Toolbox::deprecated();
-      if (is_object($object)) {
-         return is_a($object, $class_name);
-      } else {
-         return is_a($object, $class_name, true);
-      }
-   }
-
-
-   /**
     * Retrieve the mime type of a file
     *
     * @since 0.85.5
@@ -2666,27 +2655,34 @@ class Toolbox {
          preg_match_all('/'.Document::getImageTag('(([a-z0-9]+|[\.\-]?)+)').'/', $content_text,
                         $matches, PREG_PATTERN_ORDER);
          if (isset($matches[1]) && count($matches[1])) {
-            $doc_data = $document->find("`tag` IN('".implode("','", array_unique($matches[1]))."')");
+            $doc_data = $document->find(['tag' => array_unique($matches[1])]);
          }
       }
 
       if (count($doc_data)) {
+         $base_path = $CFG_GLPI['root_doc'];
+         if (isCommandLine()) {
+            $base_path = parse_url($CFG_GLPI['url_base'], PHP_URL_PATH);
+         }
+
          foreach ($doc_data as $id => $image) {
             if (isset($image['tag'])) {
                // Add only image files : try to detect mime type
                if ($document->getFromDB($id)
                    && strpos($document->fields['mime'], 'image/') !== false) {
-                  // append ticket reference in image link
-                  $ticket_url_param = "";
-                  if ($item instanceof Ticket) {
-                     $ticket_url_param = "&tickets_id=".$item->fields['id'];
+                  // append itil object reference in image link
+                  $itil_object = null;
+                  if ($item instanceof CommonITILObject) {
+                     $itil_object = $item;
+                  } else if (isset($item->input['_job'])
+                             && $item->input['_job'] instanceof CommonITILObject) {
+                     $itil_object = $item->input['_job'];
                   }
-                  if (isset($item->input['_job'])
-                      && $item->input['_job'] instanceof Ticket) {
-                     $ticket_url_param = "&tickets_id=".$item->input['_job']->fields['id'];
-                  }
-                  $img = "<img alt='".$image['tag']."' src='".$CFG_GLPI['root_doc'].
-                          "/front/document.send.php?docid=".$id.$ticket_url_param."'/>";
+                  $itil_url_param = null !== $itil_object
+                     ? "&{$itil_object->getForeignKeyField()}={$itil_object->fields['id']}"
+                     : "";
+                  $img = "<img alt='".$image['tag']."' src='".$base_path.
+                          "/front/document.send.php?docid=".$id.$itil_url_param."'/>";
 
                   // 1 - Replace direct tag (with prefix and suffix) by the image
                   $content_text = preg_replace('/'.Document::getImageTag($image['tag']).'/',
@@ -2716,7 +2712,7 @@ class Toolbox {
                      // replace image
                      $new_image =  Html::convertTagFromRichTextToImageTag($image['tag'],
                                                                           $width, $height,
-                                                                          true, $ticket_url_param);
+                                                                          true, $itil_url_param);
                      $content_text = preg_replace(
                         $regex,
                         $new_image,
@@ -2790,20 +2786,11 @@ class Toolbox {
     * @return html content
    **/
    static function cleanTagOrImage($content, array $tags) {
-      global $CFG_GLPI;
-
       // RICH TEXT : delete img tag
-      if ($CFG_GLPI["use_rich_text"]) {
-         $content = Html::entity_decode_deep($content);
+      $content = Html::entity_decode_deep($content);
 
-         foreach ($tags as $tag) {
-            $content = preg_replace("/<img.*alt=['|\"]".$tag."['|\"][^>]*\>/", "<p></p>", $content);
-         }
-
-      } else { // SIMPLE TEXT : delete tag
-         foreach ($tags as $tag) {
-            $content = preg_replace('/'.Document::getImageTag($tag).'/', '\r\n', $content);
-         }
+      foreach ($tags as $tag) {
+         $content = preg_replace("/<img.*alt=['|\"]".$tag."['|\"][^>]*\>/", "<p></p>", $content);
       }
 
       return $content;

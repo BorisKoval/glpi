@@ -196,21 +196,6 @@ abstract class CommonITILTask  extends CommonDBTM {
    }
 
 
-   /**
-    * @deprecated 9.3.2
-    */
-   static function displayTabContentForItem(CommonGLPI $item, $tabnum = 1, $withtemplate = 0) {
-
-      Toolbox::deprecated();
-
-      $itemtype = $item->getType().'Task';
-      if ($task = getItemForItemtype($itemtype)) {
-         $task->showSummary($item);
-         return true;
-      }
-   }
-
-
    function post_deleteFromDB() {
       global $CFG_GLPI;
 
@@ -662,9 +647,16 @@ abstract class CommonITILTask  extends CommonDBTM {
     * @since 0.85
    **/
    static function rawSearchOptionsToAdd($itemtype = null) {
+
       $task = new static();
       $tab = [];
       $name = _n('Task', 'Tasks', Session::getPluralNumber());
+
+      $task_condition = '';
+      if (!Session::haveRight("task", CommonITILTask::SEEPRIVATE)) {
+         $task_condition = "AND (`NEWTABLE`.`is_private` = 0
+                                 OR `NEWTABLE`.`users_id` = '".Session::getLoginUserID()."')";
+      }
 
       $tab[] = [
          'id'                 => 'task',
@@ -680,8 +672,10 @@ abstract class CommonITILTask  extends CommonDBTM {
          'forcegroupby'       => true,
          'splititems'         => true,
          'massiveaction'      => false,
+         'htmltext'           => true,
          'joinparams'         => [
-            'jointype'           => 'child'
+            'jointype'           => 'child',
+            'condition'          => $task_condition,
          ]
       ];
 
@@ -695,7 +689,8 @@ abstract class CommonITILTask  extends CommonDBTM {
          'datatype'           => 'count',
          'massiveaction'      => false,
          'joinparams'         => [
-            'jointype'           => 'child'
+            'jointype'           => 'child',
+            'condition'          => $task_condition,
          ]
       ];
 
@@ -712,7 +707,8 @@ abstract class CommonITILTask  extends CommonDBTM {
             'beforejoin'         => [
                'table'              => static::getTable(),
                'joinparams'         => [
-                  'jointype'           => 'child'
+                  'jointype'           => 'child',
+                  'condition'          => $task_condition,
                ]
             ]
          ]
@@ -730,7 +726,8 @@ abstract class CommonITILTask  extends CommonDBTM {
             'splititems'         => true,
             'massiveaction'      => false,
             'joinparams'         => [
-               'jointype'           => 'child'
+               'jointype'           => 'child',
+               'condition'          => $task_condition,
             ]
          ];
       }
@@ -748,7 +745,8 @@ abstract class CommonITILTask  extends CommonDBTM {
             'beforejoin'         => [
                'table'              => static::getTable(),
                'joinparams'         => [
-                  'jointype'           => 'child'
+                  'jointype'           => 'child',
+                  'condition'          => $task_condition,
                ]
             ]
          ]
@@ -768,7 +766,8 @@ abstract class CommonITILTask  extends CommonDBTM {
             'beforejoin'         => [
                'table'              => static::getTable(),
                'joinparams'         => [
-                  'jointype'           => 'child'
+                  'jointype'           => 'child',
+                  'condition'          => $task_condition,
                ]
             ]
          ]
@@ -788,7 +787,8 @@ abstract class CommonITILTask  extends CommonDBTM {
             'beforejoin'         => [
                'table'              => static::getTable(),
                'joinparams'         => [
-                  'jointype'           => 'child'
+                  'jointype'           => 'child',
+                  'condition'          => $task_condition,
                ]
             ]
          ]
@@ -803,7 +803,8 @@ abstract class CommonITILTask  extends CommonDBTM {
          'massiveaction'      => false,
          'forcegroupby'       => true,
          'joinparams'         => [
-            'jointype'           => 'child'
+            'jointype'           => 'child',
+            'condition'          => $task_condition,
          ]
       ];
 
@@ -816,7 +817,8 @@ abstract class CommonITILTask  extends CommonDBTM {
          'massiveaction'      => false,
          'forcegroupby'       => true,
          'joinparams'         => [
-            'jointype'           => 'child'
+            'jointype'           => 'child',
+            'condition'          => $task_condition,
          ]
       ];
 
@@ -831,7 +833,8 @@ abstract class CommonITILTask  extends CommonDBTM {
          'massiveaction'      => false,
          'forcegroupby'       => true,
          'joinparams'         => [
-            'jointype'           => 'child'
+            'jointype'           => 'child',
+            'condition'          => $task_condition,
          ]
       ];
 
@@ -844,7 +847,8 @@ abstract class CommonITILTask  extends CommonDBTM {
          'massiveaction'      => false,
          'forcegroupby'       => true,
          'joinparams'         => [
-            'jointype'           => 'child'
+            'jointype'           => 'child',
+            'condition'          => $task_condition,
          ]
       ];
 
@@ -857,7 +861,8 @@ abstract class CommonITILTask  extends CommonDBTM {
          'massiveaction'      => false,
          'forcegroupby'       => true,
          'joinparams'         => [
-            'jointype'           => 'child'
+            'jointype'           => 'child',
+            'condition'          => $task_condition,
          ]
       ];
 
@@ -873,7 +878,8 @@ abstract class CommonITILTask  extends CommonDBTM {
             'beforejoin'         => [
                'table'              => static::getTable(),
                'joinparams'         => [
-                  'jointype'           => 'child'
+                  'jointype'           => 'child',
+                  'condition'          => $task_condition,
                ]
             ]
          ]
@@ -1394,39 +1400,34 @@ abstract class CommonITILTask  extends CommonDBTM {
          $rowspan++;
       }
       echo "<tr class='tab_bg_1'>";
-      echo "<td rowspan='$rowspan' style='width:100px'>".__('Description')."</td>";
-      echo "<td rowspan='$rowspan' style='width:65%' id='content$rand_text'>";
+      echo "<td colspan='3' id='content$rand_text'>";
 
       $rand_text  = mt_rand();
       $content_id = "content$rand_text";
-      $cols       = 90;
-      $rows       = 6;
-      if ($CFG_GLPI["use_rich_text"]) {
-         $cols              = 100;
-         $rows              = 10;
-      }
+      $cols       = 100;
+      $rows       = 10;
 
       Html::textarea(['name'              => 'content',
                       'value'             => $this->fields["content"],
                       'rand'              => $rand_text,
                       'editor_id'         => $content_id,
                       'enable_fileupload' => true,
-                      'enable_richtext'   => $CFG_GLPI["use_rich_text"],
+                      'enable_richtext'   => true,
                       'cols'              => $cols,
                       'rows'              => $rows]);
 
-      echo "</td>";
       echo "<input type='hidden' name='$fkfield' value='".$this->fields[$fkfield]."'>";
-      echo "</td></tr>\n";
+      echo "</td>";
 
-      echo "<tr class='tab_bg_1'>";
-      echo "<td style='width:100px'>"._n('Task template', 'Task templates', 1)."</td><td>";
+      echo "<td style='vertical-align: middle'>";
+      echo "<div class='fa-label'>
+            <i class='fas fa-reply fa-fw'
+               title='"._n('Task template', 'Task templates', 2)."'></i>";
       TaskTemplate::dropdown(['value'     => $this->fields['tasktemplates_id'],
                                    'entity'    => $this->getEntityID(),
                                    'rand'      => $rand_template,
                                    'on_change' => 'tasktemplate_update(this.value)']);
-      echo "</td>";
-      echo "</tr>";
+      echo "</div>";
       echo Html::scriptBlock('
          function tasktemplate_update(value) {
             $.ajax({
@@ -1460,7 +1461,10 @@ abstract class CommonITILTask  extends CommonDBTM {
                // set action time
                $("#dropdown_actiontime'.$rand_time.'").trigger("setValue", actiontime);
                // set is_private
-               $("#dropdown_is_private'.$rand_is_private.'").trigger("setValue", data.is_private);
+               $("#is_privateswitch'.$rand_is_private.'")
+                  .prop("checked", data.is_private == "0"
+                     ? false
+                     : true);
                // set users_tech
                $("#dropdown_users_id_tech'.$rand_user.'").trigger("setValue", user_tech);
                // set group_tech
@@ -1472,46 +1476,54 @@ abstract class CommonITILTask  extends CommonDBTM {
       ');
 
       if ($ID > 0) {
-         echo "<tr class='tab_bg_1'>";
-         echo "<td>".__('Date')."</td>";
-         echo "<td>";
+         echo "<div class='fa-label'>
+         <i class='far fa-calendar fa-fw'
+            title='".__('Date')."'></i>";
          Html::showDateTimeField("date", ['value'      => $this->fields["date"],
                                                'timestep'   => 1,
                                                'maybeempty' => false]);
-         echo "</tr>";
-      } else {
-         echo "<tr class='tab_bg_1'>";
-         echo "<td colspan='2'>&nbsp;";
-         echo "</tr>";
+         echo "</div>";
       }
 
-      echo "<tr class='tab_bg_1'>";
-      echo "<td>".__('Category')."</td><td>";
-      TaskCategory::dropdown(['value'     => $this->fields["taskcategories_id"],
-                              'rand'      => $rand_type,
-                              'entity'    => $item->fields["entities_id"],
-                              'condition' => "`is_active` = 1"]);
-
-      echo "</td></tr>\n";
+      echo "<div class='fa-label'>
+         <i class='fas fa-tag fa-fw'
+            title='".__('Category')."'></i>";
+      TaskCategory::dropdown([
+         'value'     => $this->fields["taskcategories_id"],
+         'rand'      => $rand_type,
+         'entity'    => $item->fields["entities_id"],
+         'condition' => ['is_active' => 1]
+      ]);
+      echo "</div>";
 
       if (isset($this->fields["state"])) {
-         echo "<tr class='tab_bg_1'>";
-         echo "<td>".__('Status')."</td><td>";
+         echo "<div class='fa-label'>
+            <i class='fas fa-tasks fa-fw'
+               title='".__('Status')."'></i>";
          Planning::dropdownState("state", $this->fields["state"], true, ['rand' => $rand_state]);
-         echo "</td></tr>\n";
+         echo "</div>";
       }
 
       if ($this->maybePrivate()) {
-         echo "<tr class='tab_bg_1'>";
-         echo "<td>".__('Private')."</td>";
-         echo "<td>";
-         Dropdown::showYesNo('is_private', $this->fields["is_private"], -1, ['rand' => $rand_is_private]);
-         echo "</td>";
-         echo "</tr>";
+         echo "<div class='fa-label'>
+            <i class='fas fa-lock fa-fw' title='".__('Private')."'></i>
+            <span class='switch pager_controls'>
+               <label for='is_privateswitch$rand_is_private' title='".__('Private')."'>
+                  <input type='hidden' name='is_private' value='0'>
+                  <input type='checkbox' id='is_privateswitch$rand_is_private' name='is_private' value='1'".
+                        ($this->fields["is_private"]
+                           ? "checked='checked'"
+                           : "")."
+                  >
+                  <span class='lever'></span>
+               </label>
+            </span>
+         </div>";
       }
 
-      echo "<tr class='tab_bg_1'>";
-      echo "<td>". __('Duration')."</td><td>";
+      echo "<div class='fa-label'>
+         <i class='fas fa-stopwatch fa-fw'
+            title='".__('Duration')."'></i>";
 
       $toadd = [];
       for ($i=9; $i<=100; $i++) {
@@ -1524,15 +1536,13 @@ abstract class CommonITILTask  extends CommonDBTM {
                                                   'rand'            => $rand_time,
                                                   'addfirstminutes' => true,
                                                   'inhours'         => true,
-                                                  'toadd'           => $toadd]);
+                                                  'toadd'           => $toadd,
+                                                  'width'  => '']);
 
-      echo "</td></tr>\n";
+      echo "</div>";
 
-      echo "<tr class='tab_bg_1'>";
-      echo "<td>".__('By')."</td>";
-      echo "<td colspan='2'>";
-      echo "<i class='fa fa-user'></i>&nbsp;";
-      echo _n('User', 'Users', 1);
+      echo "<div class='fa-label'>";
+      echo "<i class='fas fa-user fa-fw' title='"._n('User', 'Users', 1)."'></i>";
       $params             = ['name'   => "users_id_tech",
                                   'value'  => (($ID > -1)
                                                 ?$this->fields["users_id_tech"]
@@ -1548,37 +1558,34 @@ abstract class CommonITILTask  extends CommonDBTM {
                                   'url'       => $CFG_GLPI["root_doc"]."/ajax/planningcheck.php"];
       User::dropdown($params);
 
-      echo " <a href='#' onClick=\"".Html::jsGetElementbyID('planningcheck'.$rand).".dialog('open'); return false;\">";
-      echo "&nbsp;<img src='".$CFG_GLPI["root_doc"]."/pics/reservation-3.png'
-             title=\"".__s('Availability')."\" alt=\"".__s('Availability')."\"
-             class='calendrier'>";
+      echo " <a href='#' title=\"".__s('Availability')."\" onClick=\"".Html::jsGetElementbyID('planningcheck'.$rand).".dialog('open'); return false;\">";
+      echo "<i class='far fa-calendar-alt'></i>";
+      echo "<span class='sr-only'>".__('Availability')."</span>";
       echo "</a>";
       Ajax::createIframeModalWindow('planningcheck'.$rand,
                                     $CFG_GLPI["root_doc"].
                                           "/front/planning.php?checkavailability=checkavailability".
                                           "&itemtype=".$item->getType()."&$fkfield=".$item->getID(),
                                     ['title'  => __('Availability')]);
+      echo "</div>";
 
-      echo "<br />";
-      echo Html::image($CFG_GLPI['root_doc']."/pics/group.png")."&nbsp;";
-      echo _n('Group', 'Groups', 1)."&nbsp;";
-      $params     = ['name'      => "groups_id_tech",
-                          'value'     => (($ID > -1)
-                                          ?$this->fields["groups_id_tech"]
-                                          :Dropdown::EMPTY_VALUE),
-                          'condition' => "is_task",
-                          'rand'      => $rand_group,
-                          'entity'    => $item->fields["entities_id"]];
+      echo "<div class='fa-label'>";
+      echo "<i class='fas fa-users fa-fw' title='"._n('Group', 'Groups', 1)."'></i>";
+      $params     = [
+         'name'      => "groups_id_tech",
+         'value'     => (($ID > -1)
+                        ?$this->fields["groups_id_tech"]
+                        :Dropdown::EMPTY_VALUE),
+         'condition' => ['is_task' => 1],
+         'rand'      => $rand_group,
+         'entity'    => $item->fields["entities_id"]
+      ];
 
       $params['toupdate'] = ['value_fieldname' => 'users_id',
                                   'to_update' => "group_available$rand_group",
                                   'url'       => $CFG_GLPI["root_doc"]."/ajax/planningcheck.php"];
       Group::dropdown($params);
-      echo "</td>\n";
-      echo "<td>";
-      if ($canplan) {
-         echo __('Planning');
-      }
+      echo "</div>";
 
       if (!empty($this->fields["begin"])) {
 
@@ -1669,146 +1676,50 @@ abstract class CommonITILTask  extends CommonDBTM {
 
 
    /**
-    * Show the current task sumnary
-    *
-    * @param $item   CommonITILObject
-    *
-    * @deprecated 9.3.2
-    */
-   function showSummary(CommonITILObject $item) {
-
-      Toolbox::deprecated();
-
-      global $DB, $CFG_GLPI;
-
-      if (!static::canView()) {
-         return false;
-      }
-
-      $tID = $item->fields['id'];
-
-      // Display existing Tasks
-      $showprivate = $this->canViewPrivates();
-      $caneditall  = $this->canEditAll();
-      $tmp         = [$item->getForeignKeyField() => $tID];
-      $canadd      = $this->can(-1, CREATE, $tmp);
-      $canpurge    = $this->canPurgeItem();
-
-      $RESTRICT = [];
-      if ($this->maybePrivate() && !$showprivate) {
-         $crits = [
-            'is_private'      => 0,
-            'users_id'        => Session::getLoginUserID(),
-            'users_id_tech'   => Session::getLoginUserID(),
-         ];
-         if (is_array($_SESSION['glpigroups']) && count($_SESSION['glpigroups'])) {
-            $crits['groups_id_tech'] = $_SESSION['glpigroups'];
-         }
-         $RESTRICT[] = ['OR' => $crits];
-      }
-
-      $iterator = $DB->request([
-         'SELECT' => ['id', 'date'],
-         'FROM'   => $this->getTable(),
-         'WHERE'  => [
-            $item->getForeignKeyField() => $tID
-         ] + $RESTRICT,
-         'ORDER'  => 'date DESC'
-      ]);
-
-      $rand = mt_rand();
-
-      $tasktype = $this->getType();
-      if ($caneditall || $canadd || $canpurge) {
-         echo "<div id='viewitem$tasktype$rand'></div>\n";
-      }
-
-      if ($canadd) {
-         echo "<script type='text/javascript' >\n";
-         echo "function viewAdd$tasktype$rand() {\n";
-         $params = ['type'                      => $tasktype,
-                         'parenttype'                => $item->getType(),
-                         $item->getForeignKeyField() => $item->fields['id'],
-                         'id'                        => -1];
-         Ajax::updateItemJsCode("viewitem$tasktype$rand",
-                                $CFG_GLPI["root_doc"]."/ajax/viewsubitem.php", $params);
-         echo Html::jsHide("addbutton$rand");
-         echo "};";
-         echo "</script>\n";
-         if (!in_array($item->fields["status"],
-               array_merge($item->getSolvedStatusArray(), $item->getClosedStatusArray()))) {
-            echo "<div id='addbutton$rand' class='center firstbloc'>".
-                 "<a class='vsubmit' href='javascript:viewAdd$tasktype$rand();'>";
-            echo __('Add a new task')."</a></div>\n";
-         }
-      }
-
-      if (count($iterator) == 0) {
-         echo "<table class='tab_cadre_fixe'><tr class='tab_bg_2'><th>" . __('No task found.');
-         echo "</th></tr></table>";
-      } else {
-         echo "<table class='tab_cadre_fixehov'>";
-
-         $header = "<tr><th>&nbsp;</th><th>".__('Type')."</th><th>" . __('Date') . "</th>";
-         $header .= "<th>" . __('Description') . "</th><th>" .  __('Duration') . "</th>";
-         $header .= "<th>" . __('Writer') . "</th>";
-         if ($this->maybePrivate() && $showprivate) {
-            $header .= "<th>" . __('Private') . "</th>";
-         }
-         $header .= "<th>" . __('Planning') . "</th></tr>\n";
-         echo $header;
-
-         while ($data = $iterator->next()) {
-            if ($this->getFromDB($data['id'])) {
-               $options = [ 'parent' => $item,
-                                 'rand' => $rand,
-                                 'showprivate' => $showprivate ];
-               Plugin::doHook('pre_show_item', ['item' => $this, 'options' => &$options]);
-               $this->showInObjectSumnary($item, $rand, $showprivate);
-               Plugin::doHook('post_show_item', ['item' => $this, 'options' => $options]);
-            }
-         }
-         echo $header;
-         echo "</table>";
-      }
-   }
-
-
-   /**
     * Form for Ticket or Problem Task on Massive action
-    *
-    * @deprecated 9.3.2
     */
-   function showFormMassiveAction() {
+   function showMassiveActionAddTaskForm() {
+      echo "<table class='tab_cadre_fixe'>";
+      echo '<tr><th colspan=4>'.__('Add a new task').'</th></tr>';
 
-      Toolbox::deprecated();
+      echo "<tr class='tab_bg_2'>";
+      echo "<td>".__('Category')."</td>";
+      echo "<td>";
+      TaskCategory::dropdown(['condition' => ['is_active' => 1]]);
+      echo "</td>";
+      echo "</tr>";
 
-      echo "&nbsp;".__('Category')."&nbsp;";
-      TaskCategory::dropdown(['condition' => "`is_active`= '1'"]);
+      echo "<tr class='tab_bg_2'>";
+      echo "<td>".__('Description')."</td>";
+      echo "<td><textarea name='content' cols='50' rows='6'></textarea></td>";
+      echo "</tr>";
 
-      echo "<br>".__('Description')." ";
-      echo "<textarea name='content' cols='50' rows='6'></textarea>&nbsp;";
-
-      if ($this->maybePrivate()) {
-         echo "<input type='hidden' name='is_private' value='".$_SESSION['glpitask_private']."'>";
-      }
-
-       echo "<br>".__('Duration');
-
+      echo "<tr class='tab_bg_2'>";
+      echo "<td>".__('Duration')."</td>";
+      echo "<td>";
       $toadd = [];
       for ($i=9; $i<=100; $i++) {
          $toadd[] = $i*HOUR_TIMESTAMP;
       }
-
       Dropdown::showTimeStamp("actiontime", ['min'             => 0,
-                                                  'max'             => 8*HOUR_TIMESTAMP,
-                                                  'addfirstminutes' => true,
-                                                  'inhours'         => true,
-                                                  'toadd'           => $toadd]);
+                                             'max'             => 8*HOUR_TIMESTAMP,
+                                             'addfirstminutes' => true,
+                                             'inhours'         => true,
+                                             'toadd'           => $toadd]);
+      echo "</td>";
+      echo "</tr>";
 
+      echo "<tr class='tab_bg_2'>";
+      echo "<td class='center' colspan='2'>";
+      if ($this->maybePrivate()) {
+         echo "<input type='hidden' name='is_private' value='".$_SESSION['glpitask_private']."'>";
+      }
       echo "<input type='submit' name='add' value=\""._sx('button', 'Add')."\" class='submit'>";
-   }
+      echo "</td>";
+      echo "</tr>";
 
+      echo "</table>";
+   }
 
    /**
     * Get tasks list

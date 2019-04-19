@@ -40,11 +40,6 @@ include_once GLPI_ROOT . '/inc/based_config.php';
 $TIMER_DEBUG = new Timer();
 $TIMER_DEBUG->start();
 
-foreach (['glpi_table_of', 'glpi_foreign_key_field_of'] as $session_array_fields) {
-   if (!isset($_SESSION[$session_array_fields])) {
-      $_SESSION[$session_array_fields] = [];
-   }
-}
 
 /// TODO try to remove them if possible
 include_once (GLPI_ROOT . "/inc/db.function.php");
@@ -52,12 +47,8 @@ include_once (GLPI_ROOT . "/inc/db.function.php");
 // Standard includes
 include_once (GLPI_ROOT . "/inc/config.php");
 
-
 // Security of PHP_SELF
 $_SERVER['PHP_SELF'] = Html::cleanParametersURL($_SERVER['PHP_SELF']);
-
-
-
 
 // Load Language file
 Session::loadLanguage();
@@ -100,14 +91,12 @@ if (isset($AJAX_INCLUDE)) {
 }
 
 /* On startup, register all plugins configured for use. */
-if (!isset($AJAX_INCLUDE) && !isset($PLUGINS_INCLUDED)) {
+if (!isset($PLUGINS_INCLUDED)) {
    // PLugin already included
    $PLUGINS_INCLUDED = 1;
    $LOADED_PLUGINS   = [];
    $plugin           = new Plugin();
-   if ($plugin->getPlugins() === []) {
-      $plugin->init();
-   }
+   $plugin->init();
 
    $plugins_list = $plugin->getPlugins();
    if (count($plugins_list)) {

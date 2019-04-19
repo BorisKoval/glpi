@@ -121,6 +121,9 @@ class RuleImportEntity extends Rule {
       if ($criteria['field'] == '_source') {
          $tab = [];
          foreach ($PLUGIN_HOOKS['import_item'] as $plug => $types) {
+            if (!Plugin::isPluginLoaded($plug)) {
+               continue;
+            }
             $tab[$plug] = Plugin::getInfo($plug, 'name');
          }
          Dropdown::showFromArray($name, $tab);
@@ -162,10 +165,6 @@ class RuleImportEntity extends Rule {
       $actions['locations_id']['name']     = __('Location');
       $actions['locations_id']['type']     = 'dropdown';
       $actions['locations_id']['table']    = 'glpi_locations';
-
-      $actions['groups_id']['name']     = __('Group');
-      $actions['groups_id']['type']     = 'dropdown';
-      $actions['groups_id']['table']    = 'glpi_groups';
 
       $actions['_ignore_import']['name']   = __('To be unaware of import');
       $actions['_ignore_import']['type']   = 'yesonly';

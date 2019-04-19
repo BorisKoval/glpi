@@ -110,7 +110,7 @@ class Rack extends CommonDBTM {
       State::dropdown([
          'value'     => $this->fields["states_id"],
          'entity'    => $this->fields["entities_id"],
-         'condition' => "`is_visible_rack`",
+         'condition' => ['is_visible_rack' => 1],
          'rand'      => $rand]
       );
       echo "</td></tr>\n";
@@ -160,7 +160,7 @@ class Rack extends CommonDBTM {
          'name'      => 'groups_id_tech',
          'value'     => $this->fields['groups_id_tech'],
          'entity'    => $this->fields['entities_id'],
-         'condition' => '`is_assign`',
+         'condition' => ['is_assign' => 1],
          'rand'      => $rand
       ]);
 
@@ -385,7 +385,7 @@ class Rack extends CommonDBTM {
          'field'              => 'completename',
          'name'               => __('Status'),
          'datatype'           => 'dropdown',
-         'condition'          => '`is_visible_rack`'
+         'condition'          => ['is_visible_rack' => 1]
       ];
 
       $tab[] = [
@@ -470,7 +470,7 @@ class Rack extends CommonDBTM {
          'field'              => 'completename',
          'linkfield'          => 'groups_id_tech',
          'name'               => __('Group in charge of the hardware'),
-         'condition'          => '`is_assign`',
+         'condition'          => ['is_assign' => 1],
          'datatype'           => 'dropdown'
       ];
 

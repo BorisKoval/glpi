@@ -263,7 +263,7 @@ function update0831to084() {
       $migration->changeField('glpi_entities', 'id', 'id', 'integer');
       $migration->migrationOneTable('glpi_entities');
       // pour que la procedure soit re-entrante
-      if (countElementsInTable("glpi_entities", ['id' => '0']) < 1) {
+      if (countElementsInTable("glpi_entities", ['id' => 0]) < 1) {
          // Create root entity
          $query = "INSERT INTO `glpi_entities`
                           (`id`, `name`, `completename`, `entities_id`, `level`)
@@ -1741,7 +1741,7 @@ function updateNetworkPortInstantiation($port, $fields, $setNetworkCard) {
 function addNetworkPortMigrationError($networkports_id, $motive) {
    global $DB;
 
-   if (countElementsInTable("glpi_networkportmigrations", "`id` = '$networkports_id'") == 0) {
+   if (countElementsInTable("glpi_networkportmigrations", ['id' => $networkports_id]) == 0) {
       $query = "INSERT INTO `glpi_networkportmigrations`
                        (SELECT *" . str_repeat(', 0', count(NetworkPortMigration::getMotives())) ."
                         FROM `origin_glpi_networkports`

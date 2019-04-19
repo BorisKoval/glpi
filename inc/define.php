@@ -31,7 +31,7 @@
 */
 
 // Current version of GLPI
-define('GLPI_VERSION', '9.3.3');
+define('GLPI_VERSION', '9.4.2');
 if (substr(GLPI_VERSION, -4) === '-dev') {
    //for dev version
    define('GLPI_PREVER', str_replace('-dev', '', GLPI_VERSION));
@@ -41,10 +41,10 @@ if (substr(GLPI_VERSION, -4) === '-dev') {
    );
 } else {
    //for stable version
-   define("GLPI_SCHEMA_VERSION", '9.3.2');
+   define("GLPI_SCHEMA_VERSION", '9.4.2');
 }
 define('GLPI_MIN_PHP', '5.6.0'); // Must also be changed in top of index.php
-define('GLPI_YEAR', '2018');
+define('GLPI_YEAR', '2019');
 if (!defined('GLPI_DEMO_MODE')) {
    define('GLPI_DEMO_MODE', '0');
 }
@@ -199,11 +199,12 @@ $LANG             = [];
 $CFG_GLPI["unicity_types"]                = ['Budget', 'Computer', 'Contact', 'Contract',
                                                   'Infocom', 'Monitor', 'NetworkEquipment',
                                                   'Peripheral', 'Phone', 'Printer', 'Software',
-                                                  'SoftwareLicense', 'Supplier','User', 'Certicate', 'Rack', 'Enclosure', 'Pdu'];
+                                                  'SoftwareLicense', 'Supplier','User', 'Certicate', 'Rack', 'Enclosure', 'PDU'];
 
 $CFG_GLPI["state_types"]                  = ['Computer', 'Monitor', 'NetworkEquipment',
                                                   'Peripheral', 'Phone', 'Printer', 'SoftwareLicense',
-                                                  'Certificate', 'Enclosure', 'Pdu'];
+                                                  'Certificate', 'Enclosure', 'PDU', 'Line',
+                                                   'Rack', 'SoftwareVersion'];
 
 $CFG_GLPI["asset_types"]                  = ['Computer', 'Monitor', 'NetworkEquipment',
                                                   'Peripheral', 'Phone', 'Printer', 'SoftwareLicense',
@@ -269,7 +270,7 @@ $CFG_GLPI["linkgroup_types"]              = ['Computer', 'Consumable', 'Monitor'
                                                   'Peripheral', 'Phone', 'Printer', 'Software',
                                                   'SoftwareLicense', 'Certificate'];
 
-$CFG_GLPI["linkuser_tech_types"]          = ['Computer', 'Monitor', 'NetworkEquipment',
+$CFG_GLPI["linkuser_tech_types"]          = ['Computer', 'ConsumableItem', 'Monitor', 'NetworkEquipment',
                                                   'Peripheral', 'Phone', 'Printer', 'Software',
                                                   'SoftwareLicense', 'Certificate'];
 
@@ -347,6 +348,13 @@ $CFG_GLPI['itemdevicepci_types']          = ['*'];
 
 $CFG_GLPI['itemdevicesensor_types']       = ['Computer', 'Peripheral'];
 
+$CFG_GLPI['itemdeviceprocessor_types']    = ['Computer'];
+
+$CFG_GLPI['itemdevicesoundcard_types']    = ['Computer'];
+
+$CFG_GLPI['itemdevicegraphiccard_types']  = ['Computer'];
+
+$CFG_GLPI['itemdevicemotherboard_types']  = ['Computer'];
 
 $CFG_GLPI["notificationtemplates_types"]  = ['CartridgeItem', 'Change', 'ConsumableItem',
                                              'Contract', 'Crontask', 'DBConnection',
@@ -367,7 +375,8 @@ $CFG_GLPI["rulecollections_types"]        = ['RuleImportEntityCollection',
                                                   'RuleMailCollectorCollection',
                                                   'RuleRightCollection',
                                                   'RuleSoftwareCategoryCollection',
-                                                  'RuleTicketCollection'];
+                                                  'RuleTicketCollection',
+                                                  'RuleAssetCollection'];
 
 // Items which can planned something
 $CFG_GLPI['planning_types']               = ['ChangeTask', 'ProblemTask', 'Reminder',
@@ -406,8 +415,7 @@ $CFG_GLPI['user_pref_field'] = ['backcreated', 'csv_delimiter', 'date_format',
                                      'priority_6', 'refresh_ticket_list', 'set_default_tech',
                                      'set_default_requester', 'show_count_on_tabs',
                                      'show_jobs_at_login', 'task_private', 'task_state',
-                                     'use_flat_dropdowntree', 'layout', 'ticket_timeline',
-                                     'ticket_timeline_keep_replaced_tabs', 'palette',
+                                     'use_flat_dropdowntree', 'layout', 'palette',
                                      'highcontrast_css'];
 
 $CFG_GLPI['layout_excluded_pages'] = ["profile.form.php",
@@ -465,7 +473,7 @@ $CFG_GLPI['javascript'] = [
    ],
    'tools'     => [
       'project'      => ['gantt'],
-      'knowbaseitem' => ['tinymce'],
+      'knowbaseitem' => ['tinymce', 'jstree'],
       'reminder'     => ['tinymce']
    ],
    'management' => [

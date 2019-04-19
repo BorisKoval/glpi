@@ -121,8 +121,6 @@ class Log extends CommonDBTM {
          return false;
       }
       $result = 0;
-      // type for which getValueToDisplay() could be used (fully tested)
-      $oktype = ['Entity'];
 
       foreach ($oldvalues as $key => $oldval) {
          $changes = [];
@@ -143,9 +141,8 @@ class Log extends CommonDBTM {
                   $changes          =  [$id_search_option, addslashes($oldval), $values[$key]];
                }
 
-            } else if (($val2['linkfield'] == $key)
-                || (($key == $val2['field'])
-                    && ($val2['table'] == $item->getTable()))) {
+            } else if (($val2['linkfield'] == $key && $real_type === $item->getType())
+                       || ($key == $val2['field'] && $val2['table'] == $item->getTable())) {
                // Linkfield or standard field not massive action enable
                $id_search_option = $key2; // Give ID of the $SEARCHOPTION
 
@@ -167,8 +164,6 @@ class Log extends CommonDBTM {
                }
                break;
             }
-            //
-
          }
          if (count($changes)) {
             $result = self::history($real_id, $real_type, $changes);
@@ -1165,7 +1160,7 @@ class Log extends CommonDBTM {
       if (isset($filters['affected_fields']) && !empty($filters['affected_fields'])) {
          $affected_field_crit = [];
          foreach ($filters['affected_fields'] as $index => $affected_field) {
-            $affected_field_crit[$index] = ['AND' => []];
+            $affected_field_crit[$index] = [];
             foreach (explode(";", $affected_field) as $var) {
                if (1 === preg_match('/^(?P<key>.+):(?P<operator>.*):(?P<values>.+)$/', $var, $matches)) {
                   $key = $matches['key'];
@@ -1179,9 +1174,9 @@ class Log extends CommonDBTM {
                   }
 
                   if (!empty($operator)) {
-                     $affected_field_crit[$index]['AND'][$operator][$key] = $values;
+                     $affected_field_crit[$index][$operator][$key] = $values;
                   } else {
-                     $affected_field_crit[$index]['AND'][$key] = $values;
+                     $affected_field_crit[$index][$key] = $values;
                   }
                }
             }

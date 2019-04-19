@@ -217,7 +217,7 @@ class Certificate extends CommonDBTM {
          'field'              => 'completename',
          'name'               => __('Status'),
          'datatype'           => 'dropdown',
-         'condition'          => '`is_visible_certificate`'
+         'condition'          => ['is_visible_certificate' => 1]
       ];
 
       $tab[] = [
@@ -226,7 +226,7 @@ class Certificate extends CommonDBTM {
          'field'              => 'completename',
          'linkfield'          => 'groups_id_tech',
          'name'               => __('Group in charge of the hardware'),
-         'condition'          => '`is_assign`',
+         'condition'          => ['is_assign' => 1],
          'datatype'           => 'dropdown'
       ];
 
@@ -244,7 +244,7 @@ class Certificate extends CommonDBTM {
          'table'              => 'glpi_groups',
          'field'              => 'completename',
          'name'               => __('Group'),
-         'condition'          => '`is_itemgroup`',
+         'condition'          => ['is_itemgroup' => 1],
          'datatype'           => 'dropdown'
       ];
 
@@ -376,9 +376,11 @@ class Certificate extends CommonDBTM {
       echo "</td>";
       echo "<td>".__('Status')."</td>";
       echo "<td>";
-      State::dropdown(['value'     => $this->fields["states_id"],
-                       'entity'    => $this->fields["entities_id"],
-                       'condition' => "`is_visible_certificate`"]);
+      State::dropdown([
+         'value'     => $this->fields["states_id"],
+         'entity'    => $this->fields["entities_id"],
+         'condition' => ['is_visible_certificate' => 1]
+      ]);
       echo "</td></tr>\n";
 
       echo "<tr class='tab_bg_1'>";
@@ -426,10 +428,12 @@ class Certificate extends CommonDBTM {
       echo "<tr class='tab_bg_1'>";
       echo "<td>".__('Group in charge of the hardware')."</td>";
       echo "<td>";
-      Group::dropdown(['name'      => 'groups_id_tech',
-                       'value'     => $this->fields['groups_id_tech'],
-                       'entity'    => $this->fields['entities_id'],
-                       'condition' => '`is_assign`']);
+      Group::dropdown([
+         'name'      => 'groups_id_tech',
+         'value'     => $this->fields['groups_id_tech'],
+         'entity'    => $this->fields['entities_id'],
+         'condition' => ['is_assign' => 1]
+      ]);
 
       echo "</td><td colspan='2'></td></tr>\n";
 
@@ -442,9 +446,11 @@ class Certificate extends CommonDBTM {
       echo "</td>";
       echo "<td>".__('Group')."</td>";
       echo "<td>";
-      Group::dropdown(['value'     => $this->fields["groups_id"],
-                       'entity'    => $this->fields["entities_id"],
-                       'condition' => '`is_itemgroup`']);
+      Group::dropdown([
+         'value'     => $this->fields["groups_id"],
+         'entity'    => $this->fields["entities_id"],
+         'condition' => ['is_itemgroup' => 1]
+      ]);
 
       echo "</td></tr>\n";
 

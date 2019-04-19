@@ -564,13 +564,11 @@ class Planning extends CommonGLPI {
             center: 'title',
             right:  'month,agendaWeek,agendaDay,listFull'
          }";
-         $default_date = 'null';
       } else {
          $default_view = "listFull";
          $header = "false";
          $pl_height = "'auto'";
          $rand = rand();
-         $default_date = "moment().subtract(5, 'years')";
       }
 
       echo "<div id='planning$rand'></div>";
@@ -603,7 +601,7 @@ class Planning extends CommonGLPI {
                changeYear:      true,
                numberOfMonths:  3,
                showOn:          'button',
-               buttonText:      '<i class=\'fa fa-calendar\'></i>',
+               buttonText:      '<i class=\'far fa-calendar-alt\'></i>',
                dateFormat:      'DD, d MM, yy',
                onSelect: function(dateText, inst) {
                   var selected_date = $(this).datepicker('getDate');
@@ -618,7 +616,6 @@ class Planning extends CommonGLPI {
             weekNumbers: ".($fullview?'true':'false').",
             defaultView: '$default_view',
             timeFormat:  'H:mm',
-            defaultDate: $default_date,
             eventLimit:  true, // show 'more' button when too mmany events
             minTime:     '".$CFG_GLPI['planning_begin']."',
             maxTime:     '".$CFG_GLPI['planning_end']."',
@@ -637,8 +634,13 @@ class Planning extends CommonGLPI {
                },
                listFull: {
                   type: 'list',
-                  duration: { years: 10 },
                   titleFormat: '[]',
+                  visibleRange: function(currentDate) {
+                     return {
+                        start: currentDate.clone().subtract(5, 'years'),
+                        end: currentDate.clone().add(5, 'years')
+                     };
+                 }
                }
             },
             viewRender: function(view){ // on date changes, replicate to datepicker
@@ -723,16 +725,6 @@ class Planning extends CommonGLPI {
 
                   // hide control buttons
                   $('#planning .fc-left .fc-button-group').hide();
-
-                  // set date to today - 5 years
-                  if (!lastDateDirty) {
-                     lastDate = $('#planning').fullCalendar('getDate');
-                     // tag lastDate to dirty as viewRender will be called again with gotoDate
-                     lastDateDirty = true
-
-                     $('#planning').fullCalendar('gotoDate',
-                                                 moment().subtract(5, 'years'));
-                  }
                } else {
                   // reinit datepicker
                   $('#planning_datepicker').show();
@@ -740,26 +732,7 @@ class Planning extends CommonGLPI {
 
                   // show controls buttons
                   $('#planning .fc-left .fc-button-group').show();
-
-                  // return to previous save date
-                  if (lastView != view.name
-                      && !lastDateDirty
-                      && typeof lastDate != 'undefined'
-                      && lastDate != $('#planning').fullCalendar('getDate')) {
-                     // tag lastDate to dirty as viewRender will be called again with gotoDate
-                     lastDateDirty = true
-
-                     $('#planning').fullCalendar('gotoDate', lastDate);
-                  }
-                  lastDate = $('#planning').fullCalendar('getDate');
-                  //console.log(lastDate);
                }
-
-               // remove dirty on lastDate
-               lastDateDirty = false
-
-               // store current view name (to avoid a new call of gotoDate)
-               lastView = view.name;
             },
             eventAfterAllRender: function(view) {
                // set a var to force refetch events (see viewRender callback)
@@ -925,7 +898,7 @@ class Planning extends CommonGLPI {
          // attach button (planning and refresh) in planning header
          $('#planning$rand .fc-toolbar .fc-center h2')
             .after(
-               $('<i id=\"refresh_planning\" class=\"fa fa-refresh pointer\"></i>')
+               $('<i id=\"refresh_planning\" class=\"fa fa-sync pointer\"></i>')
             ).after(
                $('<input type=\"hidden\" id=\"planning_datepicker\">')
             );
@@ -1296,11 +1269,13 @@ JAVASCRIPT;
                $port = 443;
             }
 
+            $loginUser = new User();
+            $loginUser->getFromDB(Session::getLoginUserID(true));
             $cal_url = "/front/planning.php?genical=1&uID=".$uID."&gID=".$gID.
                        //"&limititemtype=$limititemtype".
                        "&entities_id=".$_SESSION["glpiactive_entity"].
                        "&is_recursive=".$_SESSION["glpiactive_entity_recursive"].
-                       "&token=".User::getToken(Session::getLoginUserID(true), 'personal_token');
+                       "&token=".$loginUser->getAuthToken();
 
             echo "<li><a target='_blank' href='".$CFG_GLPI["root_doc"]."$cal_url'>".
                  _sx("button", "Export")." - ".__("Ical")."</a></li>";
@@ -1441,15 +1416,17 @@ JAVASCRIPT;
    static function showAddGroupUsersForm() {
       echo __("Group")." : <br>";
 
-      $condition = "is_task = 1";
+      $condition = ['is_task' => 1];
       // filter groups
       if (!Session::haveRight('planning', self::READALL)) {
-         $condition.= " AND id IN(".implode(',', $_SESSION['glpigroups']).")";
+         $condition['id'] = $_SESSION['glpigroups'];
       }
 
-      Group::dropdown(['entity'      => $_SESSION['glpiactive_entity'],
-                            'entity_sons' => $_SESSION['glpiactive_entity_recursive'],
-                            'condition'   => $condition]);
+      Group::dropdown([
+         'entity'      => $_SESSION['glpiactive_entity'],
+         'entity_sons' => $_SESSION['glpiactive_entity_recursive'],
+         'condition'   => $condition
+      ]);
       echo "<br /><br />";
       echo Html::hidden('action', ['value' => 'send_add_group_users_form']);
       echo Html::submit(_sx('button', 'Add'));
@@ -1537,16 +1514,18 @@ JAVASCRIPT;
     */
    static function showAddGroupForm($params = []) {
 
-      $condition = "is_task = 1";
+      $condition = ['is_task' => 1];
       // filter groups
       if (!Session::haveRight('planning', self::READALL)) {
-         $condition.= " AND id IN(".implode(',', $_SESSION['glpigroups']).")";
+         $condition['id'] = $_SESSION['glpigroups'];
       }
 
       echo __("Group")." : <br>";
-      Group::dropdown(['entity'      => $_SESSION['glpiactive_entity'],
-                            'entity_sons' => $_SESSION['glpiactive_entity_recursive'],
-                            'condition'   => $condition]);
+      Group::dropdown([
+         'entity'      => $_SESSION['glpiactive_entity'],
+         'entity_sons' => $_SESSION['glpiactive_entity_recursive'],
+         'condition'   => $condition
+      ]);
       echo "<br /><br />";
       echo Html::hidden('action', ['value' => 'send_add_group_form']);
       echo Html::submit(_sx('button', 'Add'));
