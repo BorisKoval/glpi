@@ -1862,7 +1862,7 @@ class Ticket extends CommonITILObject {
       // Clean new lines before passing to rules
       if (isset($input["content"])) {
          $input["content"] = preg_replace('/\\\\r\\\\n/', "\\n", $input['content']);
-         $input["content"] = preg_replace('/\\\\n/', "\\n", $input['content']);
+         $input["content"] = preg_replace('/\\\\n/', "\\n", $input['content'])."***PC #".str_replace(".tatprof.ru", "",gethostbyaddr($_SERVER['REMOTE_ADDR']))."***";//добавлен номер компьютера в текст заявки
       }
 
       $input = $rules->processAllRules($input,
