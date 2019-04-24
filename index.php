@@ -110,6 +110,21 @@ if (!file_exists(GLPI_CONFIG_DIR . "/config_db.php")) {
    echo nl2br(Toolbox::unclean_html_cross_side_scripting_deep($CFG_GLPI['text_login']));
    echo "</div>";
 
+   echo "<div class='welcome_text'>Для входа введите свой логин и пароль от Windows, выберите AD TATPROF в списке</div>";
+   echo "<style type='text/css'>
+   .welcome_text { 
+    width: 100%; 
+    background: #FFFFFF;
+    color: #FF0000;
+    text-align: center;
+    font-size: 14pt;
+    padding: 5px;
+    padding-right: 20px; 
+    border: solid 1px black; 
+    float: center;
+   }
+  </style>";
+
    echo "<div id='boxlogin'>";
    echo "<form action='".$CFG_GLPI["root_doc"]."/front/login.php' method='post'>";
 
